@@ -1,0 +1,201 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>AzerothCore Server Manager</title>
+  <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+  <header>
+    <div class="header-content">
+      <h1>⚔️ AzerothCore Manager</h1>
+      <div class="header-actions">
+        <button id="refreshBtn" class="btn btn-secondary" onclick="refreshAll()">↻ Refresh</button>
+        <span id="lastUpdate" class="timestamp"></span>
+      </div>
+    </div>
+  </header>
+
+  <nav class="sidebar">
+    <button class="nav-btn active" data-tab="dashboard">📊 Dashboard</button>
+    <button class="nav-btn" data-tab="servers">🖥️ Servers</button>
+    <button class="nav-btn" data-tab="database">🗄️ Database</button>
+    <button class="nav-btn" data-tab="users">👥 Users</button>
+    <button class="nav-btn" data-tab="config">⚙️ Configuration</button>
+    <button class="nav-btn" data-tab="logs">📋 Logs</button>
+    <button class="nav-btn" data-tab="backup">💾 Backup</button>
+  </nav>
+
+  <main>
+    <!-- Dashboard Tab -->
+    <section id="dashboard" class="tab-content active">
+      <h2>System Overview</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>System Info</h3>
+          <div id="systemInfo" class="info-list"></div>
+        </div>
+        <div class="card">
+          <h3>Server Status</h3>
+          <div id="serverStatus" class="status-list"></div>
+        </div>
+        <div class="card">
+          <h3>Database Sizes</h3>
+          <div id="dbStats" class="info-list"></div>
+        </div>
+        <div class="card">
+          <h3>Quick Actions</h3>
+          <div class="action-buttons">
+            <button class="btn btn-primary" onclick="showTab('servers')">Manage Servers</button>
+            <button class="btn btn-primary" onclick="showTab('database')">Query Database</button>
+            <button class="btn btn-warning" onclick="showTab('backup')">Create Backup</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Servers Tab -->
+    <section id="servers" class="tab-content">
+      <h2>Server Management</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Container Status</h3>
+          <div id="containersList" class="status-list"></div>
+        </div>
+        <div class="card">
+          <h3>Server Controls</h3>
+          <div id="serverControls" class="controls-list"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Database Tab -->
+    <section id="database" class="tab-content">
+      <h2>Database Management</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Databases</h3>
+          <div id="dbList" class="info-list"></div>
+        </div>
+        <div class="card full-width">
+          <h3>SQL Query</h3>
+          <div class="form-group">
+            <label for="dbSelect">Database:</label>
+            <select id="dbSelect" class="form-control"></select>
+          </div>
+          <div class="form-group">
+            <label for="sqlQuery">Query:</label>
+            <textarea id="sqlQuery" class="form-control" rows="4" placeholder="SELECT * FROM account LIMIT 10;"></textarea>
+          </div>
+          <button class="btn btn-primary" onclick="executeQuery()">Execute Query</button>
+          <div id="queryResults" class="results-table"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Users Tab -->
+    <section id="users" class="tab-content">
+      <h2>User Management</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Create User</h3>
+          <form id="createUserForm" onsubmit="createUser(event)">
+            <div class="form-group">
+              <label for="username">Username:</label>
+              <input type="text" id="username" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="email">Email:</label>
+              <input type="email" id="email" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="password">Password:</label>
+              <input type="password" id="password" class="form-control" required>
+            </div>
+            <button type="submit" class="btn btn-primary">Create User</button>
+          </form>
+        </div>
+        <div class="card full-width">
+          <h3>Account List</h3>
+          <div id="usersList" class="table-container"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Configuration Tab -->
+    <section id="config" class="tab-content">
+      <h2>Configuration</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Configuration Files</h3>
+          <div id="configList" class="info-list"></div>
+        </div>
+        <div class="card full-width">
+          <h3 id="configEditorTitle">Edit Configuration</h3>
+          <textarea id="configEditor" class="form-control" rows="20" spellcheck="false"></textarea>
+          <div class="form-actions">
+            <button class="btn btn-primary" onclick="saveConfig()">Save Changes</button>
+            <button class="btn btn-secondary" onclick="loadConfig()">Reload</button>
+          </div>
+        </div>
+      </div>
+    </section>
+
+    <!-- Logs Tab -->
+    <section id="logs" class="tab-content">
+      <h2>Server Logs</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Select Container</h3>
+          <div class="form-group">
+            <label for="logContainer">Container:</label>
+            <select id="logContainer" class="form-control">
+              <option value="ac-authserver">Auth Server</option>
+              <option value="ac-worldserver">World Server</option>
+              <option value="ac-database">Database</option>
+            </select>
+          </div>
+          <div class="form-group">
+            <label for="logLines">Lines:</label>
+            <input type="number" id="logLines" class="form-control" value="100" min="10" max="1000">
+          </div>
+          <button class="btn btn-primary" onclick="fetchLogs()">Fetch Logs</button>
+          <button class="btn btn-secondary" onclick="downloadLogs()">Download</button>
+        </div>
+        <div class="card full-width">
+          <h3>Log Output</h3>
+          <pre id="logOutput" class="log-output"></pre>
+        </div>
+      </div>
+    </section>
+
+    <!-- Backup Tab -->
+    <section id="backup" class="tab-content">
+      <h2>Backup & Restore</h2>
+      <div class="grid">
+        <div class="card">
+          <h3>Create Backup</h3>
+          <div class="form-group">
+            <label>Databases to backup:</label>
+            <div class="checkbox-group">
+              <label><input type="checkbox" value="acore_auth" checked> acore_auth</label>
+              <label><input type="checkbox" value="acore_world" checked> acore_world</label>
+              <label><input type="checkbox" value="acore_characters" checked> acore_characters</label>
+            </div>
+          </div>
+          <button class="btn btn-primary" onclick="createBackup()">Create Backup</button>
+        </div>
+        <div class="card full-width">
+          <h3>Available Backups</h3>
+          <div id="backupsList" class="table-container"></div>
+        </div>
+      </div>
+    </section>
+  </main>
+
+  <div id="toast" class="toast"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>

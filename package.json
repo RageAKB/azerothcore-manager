@@ -1,0 +1,13 @@
+{
+  "name": "azerothcore-manager",
+  "version": "1.0.0",
+  "private": true,
+  "main": "main.js",
+  "scripts": {
+    "start": "node main.js"
+  },
+  "dependencies": {
+    "express": "^4.21.2",
+    "mysql2": "^3.11.4"
+  }
+}

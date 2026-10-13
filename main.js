@@ -2,6 +2,7 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
+const http = require('http');
 const { exec } = require('child_process');
 const util = require('util');
 const os = require('os');
@@ -350,18 +351,106 @@ app.get('/api/backups', async (req, res) => {
   }
 });
 
+// ============ LOGS (JSON) ============
+
+async function getContainerIdByName(containerName) {
+  try {
+    const { stdout } = await execAsync('docker network inspect ac-network');
+    if (!stdout.trim()) return null;
+    const network = JSON.parse(stdout);
+    const networkContainers = network[0]?.Containers || {};
+    if (networkContainers[containerName]) {
+      return networkContainers[containerName].EndpointID;
+    }
+    return null;
+  } catch (err) {
+    return null;
+  }
+}
+
+function dockerApiRequest(path, options = {}) {
+  return new Promise((resolve, reject) => {
+    const req = http.request({
+      socketPath: '/var/run/docker.sock',
+      path,
+      method: options.method || 'GET',
+      headers: options.headers || {}
+    }, (res) => {
+      const chunks = [];
+      res.on('data', chunk => chunks.push(chunk));
+      res.on('end', () => {
+        const data = Buffer.concat(chunks);
+        if (res.statusCode >= 200 && res.statusCode < 300) {
+          resolve({ statusCode: res.statusCode, body: data });
+        } else {
+          reject(new Error(`Docker API error ${res.statusCode}: ${data.toString()}`));
+        }
+      });
+    });
+    req.on('error', reject);
+    if (options.body) req.write(options.body);
+    req.end();
+  });
+}
+
+app.get('/api/logs', async (req, res) => {
+  try {
+    const { container, lines = '100' } = req.query;
+    const containerId = await getContainerIdByName(container);
+    
+    if (!containerId) {
+      return res.status(404).json({ error: `Container '${container}' not found on ac-network` });
+    }
+
+    const { body } = await dockerApiRequest(
+      `/containers/${containerId}/logs?stdout=1&stderr=1&tail=${lines}`,
+      { headers: { 'X-Stream': 'true' } }
+    );
+
+    // Docker API returns logs with 8-byte header per line, strip it
+    const logLines = [];
+    let i = 0;
+    while (i < body.length) {
+      if (i + 8 > body.length) break;
+      const header = body.slice(i, i + 8);
+      const streamType = header[0]; // 1=stdout, 2=stderr
+      const length = (header[4] << 24) | (header[5] << 16) | (header[6] << 8) | header[7];
+      if (i + 8 + length > body.length) break;
+      const logData = body.slice(i + 8, i + 8 + length);
+      logLines.push(logData.toString('utf8').trim());
+      i += 8 + length;
+    }
+
+    res.json({ logs: logLines });
+  } catch (err) {
+    if (err.message.includes('No such network') || err.message.includes('dial unix')) {
+      return res.status(500).json({ error: 'Docker is not available inside this container.' });
+    }
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============ DOWNLOAD LOGS ============
 
 app.get('/api/download/logs/:container', async (req, res) => {
   try {
     const { container } = req.params;
-    const { stdout } = await execAsync(`docker logs --tail 1000 ${container} 2>&1`);
+    const containerId = await getContainerIdByName(container);
     
+    if (!containerId) {
+      return res.status(404).json({ error: `Container '${container}' not found on ac-network` });
+    }
+
+    const { body } = await dockerApiRequest(
+      `/containers/${containerId}/logs?stdout=1&stderr=1&tail=1000`,
+      { headers: { 'X-Stream': 'true' } }
+    );
+
     res.setHeader('Content-Type', 'text/plain');
     res.setHeader('Content-Disposition', `attachment; filename="${container}-logs.txt"`);
-    res.send(stdout);
+    res.send(body);
   } catch (err) {
-    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
+    if (err.message.includes('No such network') || err.message.includes('dial unix')) {
       return res.status(500).json({ error: 'Docker is not available inside this container.' });
     }
     res.status(500).json({ error: err.message });

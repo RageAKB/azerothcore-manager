@@ -273,8 +273,7 @@ async function executeQuery() {
 
 async function loadUsers() {
   try {
-    const pool = await getDbPool();
-    const [rows] = await pool.query('SELECT id, username, email, active FROM account ORDER BY id DESC LIMIT 100');
+    const rows = await apiGet('/api/users');
     
     document.getElementById('usersList').innerHTML = `
       <table>
@@ -314,13 +313,13 @@ async function createUser(event) {
   const email = document.getElementById('email').value;
   const password = document.getElementById('password').value;
   
+  if (!username || !password) {
+    showToast('Username and password are required.', 'error');
+    return;
+  }
+  
   try {
-    const pool = await getDbPool();
-    await pool.query(
-      'INSERT INTO account (username, salt, sha_pass_hash, email, joindate, ip) VALUES (?, ?, ?, ?, NOW(), ?)',
-      [username, generateSalt(), hashPassword(username, password), email, '127.0.0.1']
-    );
-    
+    await apiPost('/api/users', { username, email, password });
     showToast(`User ${username} created successfully`);
     document.getElementById('createUserForm').reset();
     loadUsers();
@@ -329,27 +328,11 @@ async function createUser(event) {
   }
 }
 
-function generateSalt() {
-  const chars = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789';
-  let salt = '';
-  for (let i = 0; i < 32; i++) {
-    salt += chars.charAt(Math.floor(Math.random() * chars.length));
-  }
-  return salt;
-}
-
-function hashPassword(username, password) {
-  // Simplified - in production use proper bcrypt
-  const crypto = require('crypto');
-  return crypto.createHash('sha1').update(`${username}:${password}`).digest('hex').toUpperCase();
-}
-
 async function deleteUser(id, username) {
   if (!confirm(`Delete user ${username}? This cannot be undone.`)) return;
   
   try {
-    const pool = await getDbPool();
-    await pool.query('DELETE FROM account WHERE id = ?', [id]);
+    await apiDelete(`/api/users/${id}`);
     showToast(`User ${username} deleted`);
     loadUsers();
   } catch (err) {

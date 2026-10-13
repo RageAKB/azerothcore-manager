@@ -397,6 +397,55 @@ app.get('/api/download/logs/:filename', async (req, res) => {
   }
 });
 
+// ============ USER MANAGEMENT ============
+
+app.get('/api/users', async (req, res) => {
+  try {
+    const pool = await getDbPool();
+    const [rows] = await pool.query(
+      'SELECT id, username, email, active FROM account ORDER BY id DESC LIMIT 100'
+    );
+    res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const { username, email, password } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+
+    const pool = await getDbPool();
+    const salt = require('crypto').randomBytes(16).toString('hex').toUpperCase();
+    const shaPass = require('crypto').createHash('sha1')
+      .update(`${username}:${password}`)
+      .digest('hex').toUpperCase();
+
+    await pool.query(
+      'INSERT INTO account (username, salt, sha_pass_hash, email, joindate, ip) VALUES (?, ?, ?, ?, NOW(), ?)',
+      [username, salt, shaPass, email || '', '127.0.0.1']
+    );
+
+    res.json({ success: true, message: `User ${username} created` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = await getDbPool();
+    await pool.query('DELETE FROM account WHERE id = ?', [id]);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
 // ============ HEALTH CHECK ============
 
 app.get('/health', (req, res) => {

@@ -29,7 +29,7 @@ function showTab(tabName) {
     case 'database': loadDatabase(); break;
     case 'users': loadUsers(); break;
     case 'config': loadConfigList(); break;
-    case 'logs': break;
+    case 'logs': loadLogFileList(); break;
     case 'backup': loadBackups(); break;
   }
 }
@@ -468,6 +468,69 @@ function formatSize(bytes) {
   const sizes = ['B', 'KB', 'MB', 'GB'];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(2)) + ' ' + sizes[i];
+}
+
+// ============ LOGS ============
+
+let currentLogFile = null;
+
+function loadLogFileList() {
+  fetch('/api/logs/files')
+    .then(res => res.json())
+    .then(files => {
+      const list = document.getElementById('logFileList');
+      if (files.length === 0) {
+        list.innerHTML = '<p class="text-muted">No log files found</p>';
+        return;
+      }
+      
+      list.innerHTML = files.map(f => `
+        <div class="info-item" style="cursor:pointer; padding:8px; border-bottom:1px solid #eee;" onclick="selectLogFile('${f.name}')">
+          <strong>${f.name}</strong>
+          <span style="float:right; color:#666;">${formatBytes(f.size)} · ${new Date(f.modified).toLocaleString()}</span>
+        </div>
+      `).join('');
+    })
+    .catch(err => {
+      document.getElementById('logFileList').innerHTML = `<p class="text-muted">Error: ${err.message}</p>`;
+    });
+}
+
+function selectLogFile(filename) {
+  currentLogFile = filename;
+  document.getElementById('logOutputTitle').textContent = filename;
+  loadLogContent();
+}
+
+function loadLogContent() {
+  if (!currentLogFile) {
+    document.getElementById('logOutput').textContent = 'Please select a log file first.';
+    return;
+  }
+  
+  const lines = document.getElementById('logLines').value || '200';
+  document.getElementById('logOutput').textContent = 'Loading...';
+  
+  fetch(`/api/logs?file=${encodeURIComponent(currentLogFile)}&lines=${lines}`)
+    .then(res => res.json())
+    .then(data => {
+      if (data.error) {
+        document.getElementById('logOutput').textContent = `Error: ${data.error}`;
+        return;
+      }
+      document.getElementById('logOutput').textContent = data.lines.join('\n');
+    })
+    .catch(err => {
+      document.getElementById('logOutput').textContent = `Error: ${err.message}`;
+    });
+}
+
+function downloadCurrentLog() {
+  if (!currentLogFile) {
+    showToast('Please select a log file first.', 'error');
+    return;
+  }
+  window.open(`/api/download/logs/${encodeURIComponent(currentLogFile)}`, '_blank');
 }
 
 // ============ REFRESH ============

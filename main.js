@@ -2,7 +2,6 @@ const express = require('express');
 const mysql = require('mysql2/promise');
 const path = require('path');
 const fs = require('fs');
-const http = require('http');
 const { exec } = require('child_process');
 const util = require('util');
 const os = require('os');
@@ -351,108 +350,54 @@ app.get('/api/backups', async (req, res) => {
   }
 });
 
-// ============ LOGS (JSON) ============
+// ============ LOGS ============
 
-async function getContainerIdByName(containerName) {
-  try {
-    const { stdout } = await execAsync('docker network inspect ac-network');
-    if (!stdout.trim()) return null;
-    const network = JSON.parse(stdout);
-    const networkContainers = network[0]?.Containers || {};
-    if (networkContainers[containerName]) {
-      return networkContainers[containerName].EndpointID;
-    }
-    return null;
-  } catch (err) {
-    return null;
-  }
-}
-
-function dockerApiRequest(path, options = {}) {
-  return new Promise((resolve, reject) => {
-    const req = http.request({
-      socketPath: '/var/run/docker.sock',
-      path,
-      method: options.method || 'GET',
-      headers: options.headers || {}
-    }, (res) => {
-      const chunks = [];
-      res.on('data', chunk => chunks.push(chunk));
-      res.on('end', () => {
-        const data = Buffer.concat(chunks);
-        if (res.statusCode >= 200 && res.statusCode < 300) {
-          resolve({ statusCode: res.statusCode, body: data });
-        } else {
-          reject(new Error(`Docker API error ${res.statusCode}: ${data.toString()}`));
-        }
-      });
-    });
-    req.on('error', reject);
-    if (options.body) req.write(options.body);
-    req.end();
-  });
-}
+const LOG_DIR = process.env.LOG_DIR || '/azerothcore/env/dist/logs';
+const LOG_FILES = [
+  { name: 'Auth.log', label: 'Auth Server' },
+  { name: 'DBImport.log', label: 'DB Import' },
+  { name: 'Errors.log', label: 'Errors' },
+  { name: 'Server.log', label: 'World Server' }
+];
 
 app.get('/api/logs', async (req, res) => {
   try {
-    const { container, lines = '100' } = req.query;
-    const containerId = await getContainerIdByName(container);
+    const { file, lines = '100' } = req.query;
+    if (!file) {
+      return res.status(400).json({ error: 'file parameter required' });
+    }
     
-    if (!containerId) {
-      return res.status(404).json({ error: `Container '${container}' not found on ac-network` });
-    }
-
-    const { body } = await dockerApiRequest(
-      `/containers/${containerId}/logs?stdout=1&stderr=1&tail=${lines}`,
-      {} 
-    );
-
-    // Docker API returns logs with 8-byte header per line, strip it
-    const logLines = [];
-    let i = 0;
-    while (i < body.length) {
-      if (i + 8 > body.length) break;
-      const header = body.slice(i, i + 8);
-      const streamType = header[0]; // 1=stdout, 2=stderr
-      const length = (header[4] << 24) | (header[5] << 16) | (header[6] << 8) | header[7];
-      if (i + 8 + length > body.length) break;
-      const logData = body.slice(i + 8, i + 8 + length);
-      logLines.push(logData.toString('utf8').trim());
-      i += 8 + length;
-    }
-
-    res.json({ logs: logLines });
+    const filePath = path.join(LOG_DIR, file);
+    const content = fs.readFileSync(filePath, 'utf8');
+    const allLines = content.split('\n');
+    const tailLines = allLines.slice(-parseInt(lines));
+    
+    res.json({ file, lines: tailLines });
   } catch (err) {
-    if (err.message.includes('No such network') || err.message.includes('dial unix')) {
-      return res.status(500).json({ error: 'Docker is not available inside this container.' });
-    }
     res.status(500).json({ error: err.message });
   }
 });
 
-// ============ DOWNLOAD LOGS ============
-
-app.get('/api/download/logs/:container', async (req, res) => {
+app.get('/api/logs/files', async (req, res) => {
   try {
-    const { container } = req.params;
-    const containerId = await getContainerIdByName(container);
-    
-    if (!containerId) {
-      return res.status(404).json({ error: `Container '${container}' not found on ac-network` });
-    }
-
-    const { body } = await dockerApiRequest(
-      `/containers/${containerId}/logs?stdout=1&stderr=1&tail=1000`,
-      {} 
-    );
-
-    res.setHeader('Content-Type', 'text/plain');
-    res.setHeader('Content-Disposition', `attachment; filename="${container}-logs.txt"`);
-    res.send(body);
+    const files = fs.readdirSync(LOG_DIR)
+      .filter(f => f.endsWith('.log'))
+      .map(f => {
+        const stat = fs.statSync(path.join(LOG_DIR, f));
+        return { name: f, size: stat.size, modified: stat.mtime };
+      });
+    res.json(files);
   } catch (err) {
-    if (err.message.includes('No such network') || err.message.includes('dial unix')) {
-      return res.status(500).json({ error: 'Docker is not available inside this container.' });
-    }
+    res.json([]);
+  }
+});
+
+app.get('/api/download/logs/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const filePath = path.join(LOG_DIR, filename);
+    res.download(filePath);
+  } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });

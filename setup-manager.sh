@@ -75,11 +75,17 @@ cat >> "$COMPOSE_FILE" << 'MANAGER_SERVICE'
       DB_USER: root
       DB_PASSWORD: ${DOCKER_DB_ROOT_PASSWORD:-password}
       DB_NAME: acore_auth
-      LOG_DIR: /azerothcore-wotlk/env/dist/logs
-      CONFIG_DIR: /azerothcore-wotlk/env/dist/etc
+      LOG_DIR: /azerothcore/env/dist/logs
+      CONFIG_DIR: /azerothcore/env/dist/etc
       BACKUP_DIR: /tmp/backups
     volumes:
-      # Backups persistence (local to manager, not azerothcore dir)
+    # Docker socket — needed for container management API
+      - /var/run/docker.sock:/var/run/docker.sock
+      # Config files (read-write so the manager can edit them)
+      - ${DOCKER_VOL_ETC:-./env/dist/etc}:/azerothcore/env/dist/etc
+      # Logs (read-only)
+      - ${DOCKER_VOL_LOGS:-./env/dist/logs}:/azerothcore/env/dist/logs:ro
+      # Backups persistence
       - ${DOCKER_VOL_BACKUPS:-./backups}:/tmp/backups
     depends_on:
       ac-database:

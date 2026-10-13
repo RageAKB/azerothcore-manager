@@ -248,7 +248,7 @@ app.get('/api/logs', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const pool = await getDbPool();
-    const [rows] = await pool.query('SELECT id, username, email, gmlevel, last_ip, failed_logins FROM account');
+    const [rows] = await pool.query('SELECT id, username, email, last_ip, failed_logins FROM account');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -263,8 +263,10 @@ app.post('/api/users', async (req, res) => {
     }
 
     const pool = await getDbPool();
-    await pool.query('INSERT INTO account (username, sha_pass_hash, email) VALUES (?, ?, ?)',
-      [username, require('crypto').createHash('sha1').update(password).digest('hex'), email || '']);
+    const salt = require('crypto').randomBytes(32);
+    const verifier = require('crypto').createHash('sha1').update(Buffer.concat([salt, Buffer.from(password)])).digest();
+    await pool.query('INSERT INTO account (username, salt, verifier, email) VALUES (?, ?, ?, ?)',
+      [username, salt, verifier, email || '']);
     res.json({ success: true, message: 'User created' });
   } catch (err) {
     res.status(500).json({ error: err.message });

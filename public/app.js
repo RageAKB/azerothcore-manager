@@ -276,7 +276,7 @@ async function loadUsers() {
             <th>ID</th>
             <th>Username</th>
             <th>Email</th>
-            <th>Banned</th>
+            <th>Locked</th>
             <th>Last IP</th>
             <th>Actions</th>
           </tr>
@@ -287,7 +287,7 @@ async function loadUsers() {
               <td>${user.id}</td>
               <td>${user.username}</td>
               <td>${user.email}</td>
-              <td>${user.gmlevel > 0 ? 'GM ' + user.gmlevel : 'No'}</td>
+              <td>${user.locked ? 'Yes' : 'No'}</td>
               <td>${user.last_ip || '-'}</td>
               <td>
                 <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})">Delete</button>

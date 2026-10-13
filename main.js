@@ -231,7 +231,7 @@ app.get('/api/config/:filename', async (req, res) => {
     const content = fs.readFileSync(filePath, 'utf8');
     res.json({ filename: req.params.filename, content });
   } catch (err) {
-    res.status(404).json({ error: 'Configuration file not found' });
+    res.status(500).json({ error: err.message });
   }
 });
 
@@ -239,57 +239,39 @@ app.post('/api/config/:filename', async (req, res) => {
   try {
     const configDir = process.env.CONFIG_DIR || '/azerothcore/env/dist/etc';
     const filePath = path.join(configDir, req.params.filename);
-    fs.writeFileSync(filePath, req.body.content);
-    res.json({ success: true, message: 'Configuration saved' });
+    const content = req.body.content;
+    fs.writeFileSync(filePath, content, 'utf8');
+    res.json({ success: true, message: `Configuration saved: ${req.params.filename}` });
   } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ============ LOG MANAGEMENT ============
-
-app.get('/api/logs', async (req, res) => {
-  try {
-    const { container, lines = 100 } = req.query;
-    if (!container) {
-      return res.status(400).json({ error: 'Container parameter required' });
-    }
-
-    const { stdout } = await execAsync(`docker logs --tail ${lines} ${container} 2>&1`);
-    res.json({ container, logs: stdout.split('\n').filter(Boolean) });
-  } catch (err) {
-    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
-      return res.status(500).json({ error: 'Docker is not available inside this container.' });
-    }
     res.status(500).json({ error: err.message });
   }
 });
 
 // ============ USER MANAGEMENT ============
 
-app.get('/api/users', async (req, res) => {
+app.post('/api/users', async (req, res) => {
   try {
+    const { username, email, password } = req.body;
+    if (!username || !email || !password) {
+      return res.status(400).json({ error: 'Username, email, and password required' });
+    }
+
     const pool = await getDbPool();
-    const [rows] = await pool.query('SELECT id, username, email, last_ip, failed_logins FROM account');
-    res.json(rows);
+    const [result] = await pool.query(
+      'INSERT INTO account (username, salt, sha_pass_hash, email, joindate, ip) VALUES (?, ?, ?, ?, NOW(), ?)',
+      [username, '', '', email, '127.0.0.1']
+    );
+    res.json({ success: true, id: result.insertId });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-app.post('/api/users', async (req, res) => {
+app.get('/api/users', async (req, res) => {
   try {
-    const { username, password, email } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password required' });
-    }
-
     const pool = await getDbPool();
-    const salt = require('crypto').randomBytes(32);
-    const verifier = require('crypto').createHash('sha1').update(Buffer.concat([salt, Buffer.from(password)])).digest();
-    await pool.query('INSERT INTO account (username, salt, verifier, email) VALUES (?, ?, ?, ?)',
-      [username, salt, verifier, email || '']);
-    res.json({ success: true, message: 'User created' });
+    const [rows] = await pool.query('SELECT id, username, email, joindate, last_ip FROM account');
+    res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -299,31 +281,33 @@ app.delete('/api/users/:id', async (req, res) => {
   try {
     const pool = await getDbPool();
     await pool.query('DELETE FROM account WHERE id = ?', [req.params.id]);
-    res.json({ success: true, message: 'User deleted' });
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
 });
 
-// ============ BACKUP/RESTORE ============
+// ============ BACKUP ============
 
 app.post('/api/backup', async (req, res) => {
   try {
-    const { databases = ['acore_auth', 'acore_world', 'acore_characters'] } = req.body;
-    const backupDir = process.env.BACKUP_DIR || '/tmp/backups';
+    const { databases } = req.body;
+    if (!databases || !Array.isArray(databases) || databases.length === 0) {
+      return res.status(400).json({ error: 'Databases array required' });
+    }
+
+    const backupDir = process.env.BACKUP_DIR || '/azerothcore/backups';
+    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
+    const backupFile = path.join(backupDir, `backup-${timestamp}.sql`);
+
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, { recursive: true });
     }
 
-    const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const archivePath = path.join(backupDir, `azerothcore-backup-${timestamp}.sql.gz`);
+    const dumpCommands = databases.map(db => `mysqldump -h${dbConfig.host} -P${dbConfig.port} -u${dbConfig.user} -p${dbConfig.password} ${db}`).join(' && ');
+    await execAsync(`${dumpCommands} > ${backupFile}`);
 
-    const commands = databases.map(db => 
-      `mysqldump -h${dbConfig.host} -u${dbConfig.user} -p${dbConfig.password} ${db}`
-    ).join(' | ');
-
-    await execAsync(`${commands} | gzip > ${archivePath}`);
-    res.json({ success: true, path: archivePath, size: fs.statSync(archivePath).size });
+    res.json({ success: true, file: backupFile });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -331,20 +315,23 @@ app.post('/api/backup', async (req, res) => {
 
 app.get('/api/backups', async (req, res) => {
   try {
-    const backupDir = process.env.BACKUP_DIR || '/tmp/backups';
-    if (!fs.existsSync(backupDir)) {
-      return res.json([]);
-    }
-
-    const files = fs.readdirSync(backupDir)
-      .filter(f => f.endsWith('.sql.gz'))
-      .map(f => ({
-        name: f,
-        size: fs.statSync(path.join(backupDir, f)).size,
-        date: fs.statSync(path.join(backupDir, f)).mtime
-      }));
-
+    const backupDir = process.env.BACKUP_DIR || '/azerothcore/backups';
+    const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.sql')).map(f => {
+      const stat = fs.statSync(path.join(backupDir, f));
+      return { name: f, size: stat.size, modified: stat.mtime };
+    });
     res.json(files);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+app.delete('/api/backups/:filename', async (req, res) => {
+  try {
+    const backupDir = process.env.BACKUP_DIR || '/azerothcore/backups';
+    const filePath = path.join(backupDir, req.params.filename);
+    fs.unlinkSync(filePath);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -352,8 +339,9 @@ app.get('/api/backups', async (req, res) => {
 
 // ============ LOGS ============
 
-const LOG_DIR = process.env.LOG_DIR || '/azerothcore/env/dist/logs';
-const LOG_FILES = [
+const LOG_DIR = process.env.LOG_DIR || '/azerothcore-wotlk/env/dist/logs';
+
+const KNOWN_LOG_FILES = [
   { name: 'Auth.log', label: 'Auth Server' },
   { name: 'DBImport.log', label: 'DB Import' },
   { name: 'Errors.log', label: 'Errors' },
@@ -368,8 +356,12 @@ app.get('/api/logs', async (req, res) => {
     }
     
     const filePath = path.join(LOG_DIR, file);
+    if (!fs.existsSync(filePath)) {
+      return res.json({ file, lines: [`Log file not found: ${file}`] });
+    }
+    
     const content = fs.readFileSync(filePath, 'utf8');
-    const allLines = content.split('\n');
+    const allLines = content.split('\n').filter(l => l.length > 0);
     const tailLines = allLines.slice(-parseInt(lines));
     
     res.json({ file, lines: tailLines });
@@ -396,6 +388,9 @@ app.get('/api/download/logs/:filename', async (req, res) => {
   try {
     const { filename } = req.params;
     const filePath = path.join(LOG_DIR, filename);
+    if (!fs.existsSync(filePath)) {
+      return res.status(404).json({ error: 'Log file not found' });
+    }
     res.download(filePath);
   } catch (err) {
     res.status(500).json({ error: err.message });

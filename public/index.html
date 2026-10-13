@@ -142,29 +142,43 @@
       </div>
     </section>
 
-      <!-- Logs Tab -->
-      <section id="logs" class="tab-content">
-        <h2>Server Logs</h2>
-        <div class="grid">
-          <div class="card">
-            <h3>Log Files</h3>
-            <div id="logFileList" class="info-list"></div>
+    <!-- Logs Tab -->
+    <section id="logs" class="tab-content">
+      <h2>Server Logs</h2>
+      <div class="card full-width">
+        <!-- Log file tabs -->
+        <div class="log-tabs" id="logTabs">
+          <button class="log-tab active" data-file="Server.log" onclick="switchLogFile('Server.log')">🌍 World Server</button>
+          <button class="log-tab" data-file="Auth.log" onclick="switchLogFile('Auth.log')">🔐 Auth Server</button>
+          <button class="log-tab" data-file="DBImport.log" onclick="switchLogFile('DBImport.log')">📦 DB Import</button>
+          <button class="log-tab" data-file="Errors.log" onclick="switchLogFile('Errors.log')">⚠️ Errors</button>
+        </div>
+        <!-- Toolbar -->
+        <div class="log-toolbar">
+          <div class="log-toolbar-left">
+            <label for="logLines" class="toolbar-label">Lines:</label>
+            <input type="number" id="logLines" class="form-control log-lines-input" value="200" min="10" max="5000" style="width:80px">
+            <label for="logRefresh" class="toolbar-label">Auto-refresh:</label>
+            <select id="logRefresh" class="form-control log-refresh-select" style="width:120px">
+              <option value="0">Off</option>
+              <option value="2000">2s</option>
+              <option value="5000" selected>5s</option>
+              <option value="10000">10s</option>
+              <option value="30000">30s</option>
+            </select>
           </div>
-          <div class="card">
-            <h3>Options</h3>
-            <div class="form-group">
-              <label for="logLines">Lines to show:</label>
-              <input type="number" id="logLines" class="form-control" value="200" min="10" max="5000">
-            </div>
-            <button class="btn btn-primary" onclick="loadLogContent()">Load Logs</button>
-            <button class="btn btn-secondary" onclick="downloadCurrentLog()">Download</button>
-          </div>
-          <div class="card full-width">
-            <h3 id="logOutputTitle">Log Output</h3>
-            <pre id="logOutput" class="log-output"></pre>
+          <div class="log-toolbar-right">
+            <input type="text" id="logSearch" class="form-control log-search-input" placeholder="🔍 Filter lines..." oninput="filterLogLines()">
+            <button class="btn btn-secondary btn-sm" onclick="downloadCurrentLog()">⬇ Download</button>
+            <button class="btn btn-secondary btn-sm" onclick="clearLogOutput()">🗑 Clear</button>
           </div>
         </div>
-      </section>
+        <!-- Log output -->
+        <div class="log-output-wrapper">
+          <div id="logOutput" class="log-output"></div>
+        </div>
+      </div>
+    </section>
 
     <!-- Backup Tab -->
     <section id="backup" class="tab-content">

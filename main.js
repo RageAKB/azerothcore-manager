@@ -8,6 +8,10 @@ const os = require('os');
 
 const execAsync = util.promisify(exec);
 const app = express();
+
+function isDockerNotFound(err) {
+  return err.message && err.message.includes('docker: not found');
+}
 const PORT = process.env.PORT || 8088;
 
 // Middleware
@@ -34,6 +38,11 @@ async function getDbPool() {
     dbPool = mysql.createPool(dbConfig);
   }
   return dbPool;
+}
+
+// Helper: check if error is due to missing Docker
+function isDockerNotFound(err) {
+  return err.message.includes('docker') && err.message.includes('not found');
 }
 
 // ============ SYSTEM ENDPOINTS ============
@@ -69,6 +78,9 @@ app.get('/api/system/containers', async (req, res) => {
     });
     res.json(containers);
   } catch (err) {
+    if (isDockerNotFound(err)) {
+      return res.json([]);
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -79,6 +91,9 @@ app.post('/api/system/container/:action/:name', async (req, res) => {
     await execAsync(`docker ${action} ${name}`);
     res.json({ success: true, message: `Container ${name} ${action}ed` });
   } catch (err) {
+    if (isDockerNotFound(err)) {
+      return res.status(500).json({ error: 'Docker is not available inside this container.' });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -101,6 +116,13 @@ app.get('/api/server/status', async (req, res) => {
 
     res.json(statuses);
   } catch (err) {
+    if (isDockerNotFound(err)) {
+      return res.json({
+        'ac-authserver': 'not_found',
+        'ac-worldserver': 'not_found',
+        'ac-database': 'not_found'
+      });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -156,7 +178,7 @@ app.get('/api/db/stats', async (req, res) => {
   try {
     const pool = await getDbPool();
     const [rows] = await pool.query(`
-      SELECT table_schema as database, 
+      SELECT table_schema as \`database\`, 
              ROUND(SUM(data_length + index_length) / 1024 / 1024, 2) as size_mb,
              COUNT(*) as table_count
       FROM information_schema.tables
@@ -214,6 +236,9 @@ app.get('/api/logs', async (req, res) => {
     const { stdout } = await execAsync(`docker logs --tail ${lines} ${container} 2>&1`);
     res.json({ container, logs: stdout.split('\n').filter(Boolean) });
   } catch (err) {
+    if (isDockerNotFound(err)) {
+      return res.status(500).json({ error: 'Docker is not available inside this container.' });
+    }
     res.status(500).json({ error: err.message });
   }
 });
@@ -223,7 +248,7 @@ app.get('/api/logs', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const pool = await getDbPool();
-    const [rows] = await pool.query('SELECT id, username, email, banned, last_ip FROM account');
+    const [rows] = await pool.query('SELECT id, username, email, gmlevel, last_ip, failed_logins FROM account');
     res.json(rows);
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -232,20 +257,14 @@ app.get('/api/users', async (req, res) => {
 
 app.post('/api/users', async (req, res) => {
   try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, email, and password required' });
+    const { username, password, email } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
     }
 
     const pool = await getDbPool();
-    const hash = require('crypto').createHash('sha1')
-      .update(password.toUpperCase())
-      .digest('hex').toUpperCase();
-
-    await pool.query(
-      'INSERT INTO account (username, salt, sha_pass_hash, email, gmlevel) VALUES (?, UNHEX(SHA1(RAND())), ?, ?, ?)',
-      [username, hash, email, 0]
-    );
+    await pool.query('INSERT INTO account (username, sha_pass_hash, email) VALUES (?, ?, ?)',
+      [username, require('crypto').createHash('sha1').update(password).digest('hex'), email || '']);
     res.json({ success: true, message: 'User created' });
   } catch (err) {
     res.status(500).json({ error: err.message });
@@ -318,6 +337,9 @@ app.get('/api/download/logs/:container', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${container}-logs.txt"`);
     res.send(stdout);
   } catch (err) {
+    if (isDockerNotFound(err)) {
+      return res.status(500).json({ error: 'Docker is not available inside this container.' });
+    }
     res.status(500).json({ error: err.message });
   }
 });

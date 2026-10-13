@@ -287,7 +287,7 @@ async function loadUsers() {
               <td>${user.id}</td>
               <td>${user.username}</td>
               <td>${user.email}</td>
-              <td>${user.banned ? 'Yes' : 'No'}</td>
+              <td>${user.gmlevel > 0 ? 'GM ' + user.gmlevel : 'No'}</td>
               <td>${user.last_ip || '-'}</td>
               <td>
                 <button class="btn btn-sm btn-danger" onclick="deleteUser(${user.id})">Delete</button>

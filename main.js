@@ -404,7 +404,7 @@ app.get('/api/logs', async (req, res) => {
 
     const { body } = await dockerApiRequest(
       `/containers/${containerId}/logs?stdout=1&stderr=1&tail=${lines}`,
-      { headers: { 'X-Stream': 'true' } }
+      {} 
     );
 
     // Docker API returns logs with 8-byte header per line, strip it
@@ -443,7 +443,7 @@ app.get('/api/download/logs/:container', async (req, res) => {
 
     const { body } = await dockerApiRequest(
       `/containers/${containerId}/logs?stdout=1&stderr=1&tail=1000`,
-      { headers: { 'X-Stream': 'true' } }
+      {} 
     );
 
     res.setHeader('Content-Type', 'text/plain');

@@ -45,6 +45,11 @@ function isDockerNotFound(err) {
   return err.message.includes('docker') && err.message.includes('not found');
 }
 
+// Helper: check if error is due to missing Docker network
+function isNetworkNotFound(err) {
+  return err.message && (err.message.includes('No such network') || err.message.includes('docker.sock') || err.message.includes('dial unix'));
+}
+
 // ============ SYSTEM ENDPOINTS ============
 
 app.get('/api/system/info', async (req, res) => {
@@ -71,14 +76,23 @@ app.get('/api/system/info', async (req, res) => {
 
 app.get('/api/system/containers', async (req, res) => {
   try {
-    const { stdout } = await execAsync('docker ps --format "{{.ID}}\t{{.Names}}\t{{.Status}}\t{{.Ports}}"');
-    const containers = stdout.trim().split('\n').filter(Boolean).map(line => {
-      const [id, name, status, ports] = line.split('\t');
-      return { id, name, status, ports };
-    });
+    const { stdout } = await execAsync('docker network inspect ac-network');
+    if (!stdout.trim()) return res.json([]);
+    const network = JSON.parse(stdout);
+    const containers = [];
+    if (network[0] && network[0].Containers) {
+      for (const [name, info] of Object.entries(network[0].Containers)) {
+        containers.push({
+          id: info.EndpointID,
+          name,
+          status: info.Status,
+          ports: info.IPv4Address
+        });
+      }
+    }
     res.json(containers);
   } catch (err) {
-    if (isDockerNotFound(err)) {
+    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
       return res.json([]);
     }
     res.status(500).json({ error: err.message });
@@ -91,7 +105,7 @@ app.post('/api/system/container/:action/:name', async (req, res) => {
     await execAsync(`docker ${action} ${name}`);
     res.json({ success: true, message: `Container ${name} ${action}ed` });
   } catch (err) {
-    if (isDockerNotFound(err)) {
+    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
       return res.status(500).json({ error: 'Docker is not available inside this container.' });
     }
     res.status(500).json({ error: err.message });
@@ -102,21 +116,29 @@ app.post('/api/system/container/:action/:name', async (req, res) => {
 
 app.get('/api/server/status', async (req, res) => {
   try {
-    const containers = ['ac-authserver', 'ac-worldserver', 'ac-database'];
+    const targetContainers = ['ac-authserver', 'ac-worldserver', 'ac-database'];
     const statuses = {};
 
-    for (const container of containers) {
-      try {
-        const { stdout } = await execAsync(`docker inspect --format='{{.State.Status}}' ${container} 2>/dev/null`);
-        statuses[container] = stdout.trim();
-      } catch {
+    const { stdout } = await execAsync('docker network inspect ac-network');
+    if (!stdout.trim()) {
+      targetContainers.forEach(c => { statuses[c] = 'not_found'; });
+      return res.json(statuses);
+    }
+
+    const network = JSON.parse(stdout);
+    const networkContainers = network[0]?.Containers || {};
+
+    for (const container of targetContainers) {
+      if (networkContainers[container]) {
+        statuses[container] = networkContainers[container].Status;
+      } else {
         statuses[container] = 'not_found';
       }
     }
 
     res.json(statuses);
   } catch (err) {
-    if (isDockerNotFound(err)) {
+    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
       return res.json({
         'ac-authserver': 'not_found',
         'ac-worldserver': 'not_found',
@@ -236,7 +258,7 @@ app.get('/api/logs', async (req, res) => {
     const { stdout } = await execAsync(`docker logs --tail ${lines} ${container} 2>&1`);
     res.json({ container, logs: stdout.split('\n').filter(Boolean) });
   } catch (err) {
-    if (isDockerNotFound(err)) {
+    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
       return res.status(500).json({ error: 'Docker is not available inside this container.' });
     }
     res.status(500).json({ error: err.message });
@@ -339,7 +361,7 @@ app.get('/api/download/logs/:container', async (req, res) => {
     res.setHeader('Content-Disposition', `attachment; filename="${container}-logs.txt"`);
     res.send(stdout);
   } catch (err) {
-    if (isDockerNotFound(err)) {
+    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
       return res.status(500).json({ error: 'Docker is not available inside this container.' });
     }
     res.status(500).json({ error: err.message });

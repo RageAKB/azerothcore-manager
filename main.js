@@ -8,7 +8,7 @@ const os = require('os');
 
 const execAsync = util.promisify(exec);
 const app = express();
-const PORT = process.env.PORT || 8080;
+const PORT = process.env.PORT || 8088;
 
 // Middleware
 app.use(express.json());

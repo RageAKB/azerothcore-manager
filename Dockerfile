@@ -7,6 +7,6 @@ RUN if [ -f package-lock.json ]; then npm ci --omit=dev; \
 COPY . .
 RUN chown -R node:node /app
 USER node
-ENV PORT=8080 NODE_ENV=production
-EXPOSE 8080
+ENV PORT=8088 NODE_ENV=production
+EXPOSE 8088
 CMD ["node", "main.js"]

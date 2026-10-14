@@ -171,8 +171,11 @@ app.post('/api/db/query', async (req, res) => {
     const pool = await getDbPool();
     const connection = await pool.getConnection();
     try {
-      const [rows] = await connection.query(query);
-      res.json({ rows, rowCount: rows.length });
+      const result = await connection.query(query);
+      // SELECT returns [rows, fields]; DML returns { affectedRows, ... }
+      const rows = Array.isArray(result) ? result[0] : result;
+      const rowCount = Array.isArray(rows) ? rows.length : (rows.affectedRows || 0);
+      res.json({ rows, rowCount });
     } finally {
       connection.release();
     }
@@ -473,6 +476,39 @@ function modPow(base, exponent, modulus) {
   }
   return result;
 }
+
+// ============ LOGS ============
+
+const LOG_DIR = process.env.LOG_DIR || '/azerothcore/env/dist/logs';
+
+app.get('/api/logs', (req, res) => {
+  try {
+    const { file, lines } = req.query;
+    if (!file) {
+      return res.status(400).json({ error: 'Log file parameter required' });
+    }
+    
+    const logPath = path.join(LOG_DIR, file);
+    const lineCount = parseInt(lines) || 200;
+    
+    const content = fs.readFileSync(logPath, 'utf-8');
+    const allLines = content.split('\n').filter(l => l.trim() !== '');
+    const tailLines = allLines.slice(-lineCount);
+    
+    res.json({ lines: tailLines });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/download/logs/:filename', (req, res) => {
+  try {
+    const logPath = path.join(LOG_DIR, req.params.filename);
+    res.download(logPath);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
 
 // ============ HEALTH CHECK ============
 

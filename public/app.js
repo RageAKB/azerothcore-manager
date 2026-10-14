@@ -540,7 +540,7 @@ function loadLogContent() {
   
   output.innerHTML = '<div style="color:#666">Loading...</div>';
   
-  fetch(`/api/logs?file=${encodeURIComponent(currentLogFile)}&lines=${lines}`)
+  fetch(`/api/logs/${encodeURIComponent(currentLogFile)}?lines=${lines}`)
     .then(res => res.json())
     .then(data => {
       if (data.error) {

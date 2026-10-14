@@ -229,7 +229,7 @@ app.get('/api/config/:filename', async (req, res) => {
     const configDir = process.env.CONFIG_DIR || '/azerothcore/env/dist/etc';
     const filePath = path.join(configDir, req.params.filename);
     const content = fs.readFileSync(filePath, 'utf8');
-    res.json({ filename: req.params.filename, content });
+    res.json({ content });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -239,9 +239,44 @@ app.post('/api/config/:filename', async (req, res) => {
   try {
     const configDir = process.env.CONFIG_DIR || '/azerothcore/env/dist/etc';
     const filePath = path.join(configDir, req.params.filename);
-    const content = req.body.content;
+    const { content } = req.body;
     fs.writeFileSync(filePath, content, 'utf8');
-    res.json({ success: true, message: `Configuration saved: ${req.params.filename}` });
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// ============ LOGS ============
+
+app.get('/api/logs', async (req, res) => {
+  try {
+    const logDir = process.env.LOG_DIR || '/azerothcore/env/dist/logs';
+    const files = fs.readdirSync(logDir).filter(f => f.endsWith('.log'));
+    res.json(files);
+  } catch (err) {
+    res.json([]);
+  }
+});
+
+app.get('/api/logs/:filename', async (req, res) => {
+  try {
+    const logDir = process.env.LOG_DIR || '/azerothcore/env/dist/logs';
+    const filePath = path.join(logDir, req.params.filename);
+    const lines = parseInt(req.query.lines) || 200;
+    const content = fs.readFileSync(filePath, 'utf8');
+    const allLines = content.split('\n').reverse().slice(0, lines).reverse();
+    res.json({ lines: allLines });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.get('/api/download/logs/:filename', async (req, res) => {
+  try {
+    const logDir = process.env.LOG_DIR || '/azerothcore/env/dist/logs';
+    const filePath = path.join(logDir, req.params.filename);
+    res.download(filePath, req.params.filename);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -258,16 +293,26 @@ app.post('/api/backup', async (req, res) => {
 
     const backupDir = process.env.BACKUP_DIR || '/azerothcore/backups';
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
-    const backupFile = path.join(backupDir, `backup-${timestamp}.sql`);
+    const backupFile = path.join(backupDir, `backup-${timestamp}.sql.gz`);
 
+    // Ensure backup directory exists
     if (!fs.existsSync(backupDir)) {
       fs.mkdirSync(backupDir, { recursive: true });
     }
 
-    const dumpCommands = databases.map(db => `mysqldump -h${dbConfig.host} -P${dbConfig.port} -u${dbConfig.user} -p${dbConfig.password} ${db}`).join(' && ');
-    await execAsync(`${dumpCommands} > ${backupFile}`);
+    const pool = await getDbPool();
+    const [dbs] = await pool.query('SHOW DATABASES');
+    const dbNames = dbs.map(d => d.Database);
 
-    res.json({ success: true, file: backupFile });
+    const dbList = databases.filter(d => dbNames.includes(d));
+    if (dbList.length === 0) {
+      return res.status(400).json({ error: 'No valid databases selected' });
+    }
+
+    const dbArg = dbList.join(' ');
+    await execAsync(`mysqldump ${dbArg} | gzip > "${backupFile}"`);
+
+    res.json({ success: true, message: `Backup created: ${backupFile}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -276,82 +321,15 @@ app.post('/api/backup', async (req, res) => {
 app.get('/api/backups', async (req, res) => {
   try {
     const backupDir = process.env.BACKUP_DIR || '/azerothcore/backups';
-    const files = fs.readdirSync(backupDir).filter(f => f.endsWith('.sql')).map(f => {
-      const stat = fs.statSync(path.join(backupDir, f));
-      return { name: f, size: stat.size, modified: stat.mtime };
-    });
+    if (!fs.existsSync(backupDir)) {
+      return res.json([]);
+    }
+    const files = fs.readdirSync(backupDir).map(f => ({
+      name: f,
+      size: fs.statSync(path.join(backupDir, f)).size,
+      date: fs.statSync(path.join(backupDir, f)).mtime
+    }));
     res.json(files);
-  } catch (err) {
-    res.json([]);
-  }
-});
-
-app.delete('/api/backups/:filename', async (req, res) => {
-  try {
-    const backupDir = process.env.BACKUP_DIR || '/azerothcore/backups';
-    const filePath = path.join(backupDir, req.params.filename);
-    fs.unlinkSync(filePath);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-// ============ LOGS ============
-
-const LOG_DIR = process.env.LOG_DIR || '/azerothcore-wotlk/env/dist/logs';
-
-const KNOWN_LOG_FILES = [
-  { name: 'Auth.log', label: 'Auth Server' },
-  { name: 'DBImport.log', label: 'DB Import' },
-  { name: 'Errors.log', label: 'Errors' },
-  { name: 'Server.log', label: 'World Server' }
-];
-
-app.get('/api/logs', async (req, res) => {
-  try {
-    const { file, lines = '100' } = req.query;
-    if (!file) {
-      return res.status(400).json({ error: 'file parameter required' });
-    }
-    
-    const filePath = path.join(LOG_DIR, file);
-    if (!fs.existsSync(filePath)) {
-      return res.json({ file, lines: [`Log file not found: ${file}`] });
-    }
-    
-    const content = fs.readFileSync(filePath, 'utf8');
-    const allLines = content.split('\n').filter(l => l.length > 0);
-    const tailLines = allLines.slice(-parseInt(lines));
-    
-    res.json({ file, lines: tailLines });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/logs/files', async (req, res) => {
-  try {
-    const files = fs.readdirSync(LOG_DIR)
-      .filter(f => f.endsWith('.log'))
-      .map(f => {
-        const stat = fs.statSync(path.join(LOG_DIR, f));
-        return { name: f, size: stat.size, modified: stat.mtime };
-      });
-    res.json(files);
-  } catch (err) {
-    res.json([]);
-  }
-});
-
-app.get('/api/download/logs/:filename', async (req, res) => {
-  try {
-    const { filename } = req.params;
-    const filePath = path.join(LOG_DIR, filename);
-    if (!fs.existsSync(filePath)) {
-      return res.status(404).json({ error: 'Log file not found' });
-    }
-    res.download(filePath);
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -362,10 +340,122 @@ app.get('/api/download/logs/:filename', async (req, res) => {
 app.get('/api/users', async (req, res) => {
   try {
     const pool = await getDbPool();
-    const [rows] = await pool.query(
-      'SELECT id, username, email, locked FROM account ORDER BY id DESC LIMIT 100'
-    );
+    const [rows] = await pool.query(`
+      SELECT a.id, a.username, a.email, a.last_ip, a.expansion, a.locked,
+             COALESCE(aa.gmlevel, 0) AS gmlevel,
+             COALESCE(aa.comment, '') AS comment
+      FROM account a
+      LEFT JOIN account_access aa ON a.id = aa.id AND (aa.RealmID = -1 OR aa.RealmID = 0)
+      ORDER BY a.id
+    `);
     res.json(rows);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/users', async (req, res) => {
+  try {
+    const { username, email, password, gmlevel } = req.body;
+    if (!username || !password) {
+      return res.status(400).json({ error: 'Username and password required' });
+    }
+
+    const pool = await getDbPool();
+
+    // Check if account already exists
+    const [existing] = await pool.query('SELECT id FROM account WHERE username = ?', [username]);
+    if (existing.length > 0) {
+      return res.status(409).json({ error: 'Account already exists' });
+    }
+
+    // AzerothCore uses SRP6 for password authentication:
+    //   v = g^H(s || H(u || ":" || p)) mod N
+    // where g=7, N=0x894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7
+    const salt = require("crypto").randomBytes(32);
+    const g = BigInt(7);
+    const N = BigInt("0x894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7");
+    const u = username.toUpperCase();
+    const p = password.toUpperCase();
+    const hUp = require("crypto").createHash("sha1").update(Buffer.from(`${u}:${p}`)).digest();
+    const hS = require("crypto").createHash("sha1").update(Buffer.concat([salt, hUp])).digest();
+    const exponent = BigInt("0x" + hS.toString("hex"));
+    const v = BigInt.asUintN(256, modPow(g, exponent, N));
+    const verifier = Buffer.from(v.toString(16).padStart(64, "0"), "hex");
+
+    // gmlevel defaults to 0 (Player) if not specified
+    const level = gmlevel !== undefined && gmlevel !== null ? parseInt(gmlevel) : 0;
+    if (level < 0 || level > 3) {
+      return res.status(400).json({ error: 'gmlevel must be 0 (Player), 1 (Moderator), 2 (Game Master), or 3 (Administrator)' });
+    }
+
+    // Insert into account table with ALL required NOT NULL fields set to defaults
+    // Mimics what "account create <username> <password>" does
+    const [result] = await pool.query(
+      `INSERT INTO account 
+       (username, salt, verifier, session_key, totp_secret, email, reg_mail, 
+        last_ip, last_attempt_ip, failed_logins, locked, lock_country, 
+        expansion, Flags, mutetime, mutereason, muteby, locale, os, recruiter, totaltime)
+       VALUES (?, ?, ?, NULL, NULL, ?, '', ?, '', 0, 0, '00', 2, 0, 0, '', '', 0, '', 0, 0)`,
+      [username, salt, verifier, email || '', '127.0.0.1']
+    );
+
+    const accountId = result.insertId;
+
+    // Insert into account_access table with gmlevel
+    // Mimics what "account set gmlevel <username> <level>" does
+    await pool.query(
+      'INSERT INTO account_access (id, gmlevel, RealmID, comment) VALUES (?, ?, -1, ?)',
+      [accountId, level, 'Created via manager']
+    );
+
+    res.json({ success: true, message: `User ${username} created with gmlevel ${level}`, accountId });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.put('/api/users/:id/gmlevel', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const { gmlevel } = req.body;
+
+    const level = gmlevel !== undefined && gmlevel !== null ? parseInt(gmlevel) : 0;
+    if (level < 0 || level > 3) {
+      return res.status(400).json({ error: 'gmlevel must be 0 (Player), 1 (Moderator), 2 (Game Master), or 3 (Administrator)' });
+    }
+
+    const pool = await getDbPool();
+
+    // Check account exists
+    const [account] = await pool.query('SELECT id FROM account WHERE id = ?', [id]);
+    if (account.length === 0) {
+      return res.status(404).json({ error: 'Account not found' });
+    }
+
+    // Upsert account_access entry
+    await pool.query(
+      `INSERT INTO account_access (id, gmlevel, RealmID, comment) VALUES (?, ?, -1, 'Updated via manager')
+       ON DUPLICATE KEY UPDATE gmlevel = VALUES(gmlevel), comment = VALUES(comment)`,
+      [id, level]
+    );
+
+    res.json({ success: true, message: `Account ${id} gmlevel set to ${level}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/users/:id', async (req, res) => {
+  try {
+    const { id } = req.params;
+    const pool = await getDbPool();
+
+    // Delete from account_access first (foreign key order)
+    await pool.query('DELETE FROM account_access WHERE id = ?', [id]);
+    // Then delete from account
+    await pool.query('DELETE FROM account WHERE id = ?', [id]);
+    res.json({ success: true });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }
@@ -383,50 +473,6 @@ function modPow(base, exponent, modulus) {
   }
   return result;
 }
-
-app.post('/api/users', async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-    if (!username || !password) {
-      return res.status(400).json({ error: 'Username and password required' });
-    }
-
-      const pool = await getDbPool();
-      // AzerothCore uses SRP6 for password authentication:
-      //   v = g^H(s || H(u || ":" || p)) mod N
-      // where g=7, N=0x894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7
-      const salt = require("crypto").randomBytes(32);
-      const g = BigInt(7);
-      const N = BigInt("0x894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7");
-      const u = username.toUpperCase();
-      const p = password.toUpperCase();
-      const hUp = require("crypto").createHash("sha1").update(Buffer.from(`${u}:${p}`)).digest();
-      const hS = require("crypto").createHash("sha1").update(Buffer.concat([salt, hUp])).digest();
-      const exponent = BigInt("0x" + hS.toString("hex"));
-      const v = BigInt.asUintN(256, modPow(g, exponent, N));
-      const verifier = Buffer.from(v.toString(16).padStart(64, "0"), "hex");
-
-    await pool.query(
-      'INSERT INTO account (username, salt, verifier, email, last_ip) VALUES (?, ?, ?, ?, ?)',
-      [username, salt, verifier, email || '', '127.0.0.1']
-    );
-
-    res.json({ success: true, message: `User ${username} created` });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/users/:id', async (req, res) => {
-  try {
-    const { id } = req.params;
-    const pool = await getDbPool();
-    await pool.query('DELETE FROM account WHERE id = ?', [id]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ============ HEALTH CHECK ============
 

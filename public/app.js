@@ -275,6 +275,14 @@ async function loadUsers() {
   try {
     const rows = await apiGet('/api/users');
     
+    const gmLevelNames = { 0: 'Player', 1: 'Moderator', 2: 'Game Master', 3: 'Administrator' };
+    const gmLevelColors = {
+      0: 'status-not-found',
+      1: 'status-starting',
+      2: 'status-running',
+      3: 'status-stopped'
+    };
+    
     document.getElementById('usersList').innerHTML = `
       <table>
         <thead>
@@ -282,6 +290,7 @@ async function loadUsers() {
             <th>ID</th>
             <th>Username</th>
             <th>Email</th>
+            <th>GM Level</th>
             <th>Status</th>
             <th>Actions</th>
           </tr>
@@ -292,6 +301,14 @@ async function loadUsers() {
               <td>${u.id}</td>
               <td>${u.username}</td>
               <td>${u.email || '-'}</td>
+              <td>
+                <select class="form-control" style="width:auto;padding:0.25rem 0.5rem;font-size:0.8rem" onchange="updateGmLevel(${u.id}, this.value)">
+                  <option value="0" ${u.gmlevel == 0 ? 'selected' : ''}>0 - Player</option>
+                  <option value="1" ${u.gmlevel == 1 ? 'selected' : ''}>1 - Moderator</option>
+                  <option value="2" ${u.gmlevel == 2 ? 'selected' : ''}>2 - Game Master</option>
+                  <option value="3" ${u.gmlevel == 3 ? 'selected' : ''}>3 - Administrator</option>
+                </select>
+              </td>
               <td><span class="status-badge ${u.locked ? 'status-stopped' : 'status-running'}">${u.locked ? 'Locked' : 'Active'}</span></td>
               <td>
                 <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id}, '${u.username}')">Delete</button>
@@ -312,6 +329,7 @@ async function createUser(event) {
   const username = document.getElementById('username').value;
   const email = document.getElementById('email').value;
   const password = document.getElementById('password').value;
+  const gmlevel = parseInt(document.getElementById('gmlevel').value);
   
   if (!username || !password) {
     showToast('Username and password are required.', 'error');
@@ -319,12 +337,21 @@ async function createUser(event) {
   }
   
   try {
-    await apiPost('/api/users', { username, email, password });
-    showToast(`User ${username} created successfully`);
+    await apiPost('/api/users', { username, email, password, gmlevel });
+    showToast(`User ${username} created successfully with GM Level ${gmlevel}`);
     document.getElementById('createUserForm').reset();
     loadUsers();
   } catch (err) {
     showToast(`Error creating user: ${err.message}`, 'error');
+  }
+}
+
+async function updateGmLevel(id, gmlevel) {
+  try {
+    await apiPost(`/api/users/${id}/gmlevel`, { gmlevel: parseInt(gmlevel) });
+    showToast(`GM level updated for account ${id}`);
+  } catch (err) {
+    showToast(`Error updating GM level: ${err.message}`, 'error');
   }
 }
 

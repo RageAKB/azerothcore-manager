@@ -107,11 +107,20 @@
             </div>
             <div class="form-group">
               <label for="email">Email:</label>
-              <input type="email" id="email" class="form-control" required>
+              <input type="email" id="email" class="form-control">
             </div>
             <div class="form-group">
               <label for="password">Password:</label>
               <input type="password" id="password" class="form-control" required>
+            </div>
+            <div class="form-group">
+              <label for="gmlevel">GM Level:</label>
+              <select id="gmlevel" class="form-control">
+                <option value="0">0 - Player</option>
+                <option value="1">1 - Moderator</option>
+                <option value="2" selected>2 - Game Master</option>
+                <option value="3">3 - Administrator</option>
+              </select>
             </div>
             <button type="submit" class="btn btn-primary">Create User</button>
           </form>

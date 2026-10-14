@@ -327,7 +327,6 @@ async function createUser(event) {
   event.preventDefault();
   
   const username = document.getElementById('username').value;
-  const email = document.getElementById('email').value;
   const password = document.getElementById('password').value;
   const gmlevel = parseInt(document.getElementById('gmlevel').value);
   
@@ -337,7 +336,7 @@ async function createUser(event) {
   }
   
   try {
-    await apiPost('/api/users', { username, email, password, gmlevel });
+    await apiPost('/api/users', { username, password, gmlevel });
     showToast(`User ${username} created successfully with GM Level ${gmlevel}`);
     document.getElementById('createUserForm').reset();
     loadUsers();

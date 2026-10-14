@@ -247,46 +247,6 @@ app.post('/api/config/:filename', async (req, res) => {
   }
 });
 
-// ============ USER MANAGEMENT ============
-
-app.post('/api/users', async (req, res) => {
-  try {
-    const { username, email, password } = req.body;
-    if (!username || !email || !password) {
-      return res.status(400).json({ error: 'Username, email, and password required' });
-    }
-
-    const pool = await getDbPool();
-    const [result] = await pool.query(
-      'INSERT INTO account (username, salt, sha_pass_hash, email, joindate, ip) VALUES (?, ?, ?, ?, NOW(), ?)',
-      [username, '', '', email, '127.0.0.1']
-    );
-    res.json({ success: true, id: result.insertId });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.get('/api/users', async (req, res) => {
-  try {
-    const pool = await getDbPool();
-    const [rows] = await pool.query('SELECT id, username, email, joindate, last_ip FROM account');
-    res.json(rows);
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
-app.delete('/api/users/:id', async (req, res) => {
-  try {
-    const pool = await getDbPool();
-    await pool.query('DELETE FROM account WHERE id = ?', [req.params.id]);
-    res.json({ success: true });
-  } catch (err) {
-    res.status(500).json({ error: err.message });
-  }
-});
-
 // ============ BACKUP ============
 
 app.post('/api/backup', async (req, res) => {

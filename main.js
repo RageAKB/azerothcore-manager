@@ -378,14 +378,20 @@ app.post('/api/users', async (req, res) => {
       return res.status(400).json({ error: 'Username and password required' });
     }
 
-    const pool = await getDbPool();
-    // AzerothCore account table uses:
-    //   salt = random binary(32)
-    //   verifier = SHA1(salt + username + ":" + password) as binary(32)
-    const salt = require('crypto').randomBytes(32);
-    const verifier = require('crypto').createHash('sha1')
-      .update(Buffer.concat([salt, Buffer.from(`${username}:${password}`)]))
-      .digest();
+      const pool = await getDbPool();
+      // AzerothCore uses SRP6 for password authentication:
+      //   v = g^H(s || H(u || ":" || p)) mod N
+      // where g=7, N=0x894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7
+      const salt = require("crypto").randomBytes(32);
+      const g = BigInt(7);
+      const N = BigInt("0x894B645E89E1535BBDAD5B8B290650530801B18EBFBF5E8FAB3C82872A3E9BB7");
+      const u = username.toUpperCase();
+      const p = password.toUpperCase();
+      const hUp = require("crypto").createHash("sha1").update(Buffer.from(`${u}:${p}`)).digest();
+      const hS = require("crypto").createHash("sha1").update(Buffer.concat([salt, hUp])).digest();
+      const exponent = BigInt("0x" + hS.toString("hex"));
+      const v = BigInt.asUintN(256, g ** exponent % N);
+      const verifier = Buffer.from(v.toString(16).padStart(64, "0"), "hex");
 
     await pool.query(
       'INSERT INTO account (username, salt, verifier, email, last_ip) VALUES (?, ?, ?, ?, ?)',

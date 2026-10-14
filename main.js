@@ -371,6 +371,19 @@ app.get('/api/users', async (req, res) => {
   }
 });
 
+function modPow(base, exponent, modulus) {
+  let result = BigInt(1);
+  base = base % modulus;
+  while (exponent > BigInt(0)) {
+    if (exponent % BigInt(2) === BigInt(1)) {
+      result = (result * base) % modulus;
+    }
+    exponent = exponent >> BigInt(1);
+    base = (base * base) % modulus;
+  }
+  return result;
+}
+
 app.post('/api/users', async (req, res) => {
   try {
     const { username, email, password } = req.body;
@@ -390,7 +403,7 @@ app.post('/api/users', async (req, res) => {
       const hUp = require("crypto").createHash("sha1").update(Buffer.from(`${u}:${p}`)).digest();
       const hS = require("crypto").createHash("sha1").update(Buffer.concat([salt, hUp])).digest();
       const exponent = BigInt("0x" + hS.toString("hex"));
-      const v = BigInt.asUintN(256, g ** exponent % N);
+      const v = BigInt.asUintN(256, modPow(g, exponent, N));
       const verifier = Buffer.from(v.toString(16).padStart(64, "0"), "hex");
 
     await pool.query(

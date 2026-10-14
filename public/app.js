@@ -292,7 +292,7 @@ async function loadUsers() {
               <td>${u.id}</td>
               <td>${u.username}</td>
               <td>${u.email || '-'}</td>
-              <td><span class="status-badge ${u.active ? 'status-running' : 'status-stopped'}">${u.active ? 'Active' : 'Banned'}</span></td>
+              <td><span class="status-badge ${u.locked ? 'status-stopped' : 'status-running'}">${u.locked ? 'Locked' : 'Active'}</span></td>
               <td>
                 <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id}, '${u.username}')">Delete</button>
               </td>

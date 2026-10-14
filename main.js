@@ -403,7 +403,7 @@ app.get('/api/users', async (req, res) => {
   try {
     const pool = await getDbPool();
     const [rows] = await pool.query(
-      'SELECT id, username, email, active FROM account ORDER BY id DESC LIMIT 100'
+      'SELECT id, username, email, locked FROM account ORDER BY id DESC LIMIT 100'
     );
     res.json(rows);
   } catch (err) {
@@ -419,14 +419,17 @@ app.post('/api/users', async (req, res) => {
     }
 
     const pool = await getDbPool();
-    const salt = require('crypto').randomBytes(16).toString('hex').toUpperCase();
-    const shaPass = require('crypto').createHash('sha1')
-      .update(`${username}:${password}`)
-      .digest('hex').toUpperCase();
+    // AzerothCore account table uses:
+    //   salt = random binary(32)
+    //   verifier = SHA1(salt + username + ":" + password) as binary(32)
+    const salt = require('crypto').randomBytes(32);
+    const verifier = require('crypto').createHash('sha1')
+      .update(Buffer.concat([salt, Buffer.from(`${username}:${password}`)]))
+      .digest();
 
     await pool.query(
-      'INSERT INTO account (username, salt, sha_pass_hash, email, joindate, ip) VALUES (?, ?, ?, ?, NOW(), ?)',
-      [username, salt, shaPass, email || '', '127.0.0.1']
+      'INSERT INTO account (username, salt, verifier, email, last_ip) VALUES (?, ?, ?, ?, ?)',
+      [username, salt, verifier, email || '', '127.0.0.1']
     );
 
     res.json({ success: true, message: `User ${username} created` });

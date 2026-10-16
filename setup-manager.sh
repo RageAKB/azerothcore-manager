@@ -103,3 +103,21 @@ echo "  http://localhost:8088"
 echo ""
 echo "To override the external port, set DOCKER_MANAGER_EXTERNAL_PORT"
 echo "before running docker compose up."
+
+# ── Fix database authentication plugin ─────────────────────────────
+# MariaDB 10.4+ uses caching_sha2_password by default, but Alpine
+# MariaDB client doesn't ship the plugin library. Switch root to
+# mysql_native_password so backup/restore works.
+echo ""
+echo "Fixing database authentication plugin..."
+DB_ROOT_PASSWORD="${DOCKER_DB_ROOT_PASSWORD:-password}"
+if docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT 1" 2>/dev/null; then
+  docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
+    "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \
+  docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
+    "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null
+  echo "✓ Database auth plugin fixed."
+else
+  echo "⚠ Database not running yet — run this after docker compose up:"
+  echo "  docker compose exec ac-database mariadb -u root -p'${DB_ROOT_PASSWORD}' -e \"ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;\""
+fi

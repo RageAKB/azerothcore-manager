@@ -5,7 +5,7 @@ COPY package*.json ./
 RUN if [ -f package-lock.json ]; then npm ci --omit=dev; \
     elif [ -f package.json ]; then npm install --omit=dev; fi
 # Install Docker CLI for container management
-RUN apk add --no-cache docker-cli mysql-client
+RUN apk add --no-cache docker-cli mariadb
 COPY . .
 RUN chown -R node:node /app && \
     chmod +x entrypoint.sh

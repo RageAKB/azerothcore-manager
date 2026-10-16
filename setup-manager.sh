@@ -77,7 +77,7 @@ cat >> "$COMPOSE_FILE" << 'MANAGER_SERVICE'
       DB_NAME: acore_auth
       LOG_DIR: /azerothcore/env/dist/logs
       CONFIG_DIR: /azerothcore/env/dist/etc
-      BACKUP_DIR: /tmp/backups
+      BACKUP_DIR: /app/backups
     volumes:
     # Docker socket — needed for container management API
       - /var/run/docker.sock:/var/run/docker.sock
@@ -86,7 +86,7 @@ cat >> "$COMPOSE_FILE" << 'MANAGER_SERVICE'
       # Logs (read-only)
       - ${DOCKER_VOL_LOGS:-./env/dist/logs}:/azerothcore/env/dist/logs:ro
       # Backups persistence
-      - ${DOCKER_VOL_BACKUPS:-./backups}:/tmp/backups
+      - ${DOCKER_VOL_BACKUPS:-./backups}:/app/backups
     depends_on:
       ac-database:
         condition: service_healthy

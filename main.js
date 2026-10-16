@@ -298,9 +298,9 @@ app.post('/api/backup', async (req, res) => {
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupFile = path.join(backupDir, `backup-${timestamp}.sql.gz`);
 
-    // Ensure backup directory exists
+    // Ensure backup directory exists and is writable
     if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true });
+      fs.mkdirSync(backupDir, { recursive: true, mode: 0o755 });
     }
 
     const pool = await getDbPool();

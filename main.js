@@ -356,7 +356,7 @@ app.post('/api/backup/restore/:filename', async (req, res) => {
     const dbHost = process.env.DB_HOST || 'ac-database';
     const dbUser = process.env.DB_USER || 'root';
     const dbPass = process.env.DB_PASSWORD || 'password';
-    const cmd = `gunzip -c "${backupFile}" | mysql --host=${dbHost} --user=${dbUser} --password=${dbPass}`;
+    const cmd = `gunzip -c "${backupFile}" | mariadb --host=${dbHost} --user=${dbUser} --password=${dbPass} --ssl-mode=DISABLED`;
     await execAsync(cmd);
 
     res.json({ success: true, message: `Backup restored from ${filename}` });

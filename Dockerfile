@@ -7,8 +7,9 @@ RUN if [ -f package-lock.json ]; then npm ci --omit=dev; \
 # Install Docker CLI for container management
 RUN apk add --no-cache docker-cli mysql-client
 COPY . .
-RUN chown -R node:node /app
+RUN chown -R node:node /app && \
+    chmod +x entrypoint.sh
 USER node
 ENV PORT=8088 NODE_ENV=production
 EXPOSE 8088
-CMD ["node", "main.js"]
+ENTRYPOINT ["./entrypoint.sh"]

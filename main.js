@@ -294,13 +294,13 @@ app.post('/api/backup', async (req, res) => {
       return res.status(400).json({ error: 'Databases array required' });
     }
 
-    const backupDir = process.env.BACKUP_DIR || '/azerothcore/backups';
+    const backupDir = process.env.BACKUP_DIR || '/app/backups';
     const timestamp = new Date().toISOString().replace(/[:.]/g, '-');
     const backupFile = path.join(backupDir, `backup-${timestamp}.sql.gz`);
 
     // Ensure backup directory exists and is writable
     if (!fs.existsSync(backupDir)) {
-      fs.mkdirSync(backupDir, { recursive: true, mode: 0o755 });
+      fs.mkdirSync(backupDir, { recursive: true, mode: 0o777 });
     }
 
     const pool = await getDbPool();
@@ -313,7 +313,12 @@ app.post('/api/backup', async (req, res) => {
     }
 
     const dbArg = dbList.join(' ');
-    await execAsync(`mysqldump ${dbArg} | gzip > "${backupFile}"`);
+    // Use TCP connection with explicit host/user/password for mysqldump
+    const dbHost = process.env.DB_HOST || 'ac-database';
+    const dbUser = process.env.DB_USER || 'root';
+    const dbPass = process.env.DB_PASSWORD || 'password';
+    const cmd = `mysqldump --host=${dbHost} --user=${dbUser} --password=${dbPass} ${dbArg} | gzip > "${backupFile}"`;
+    await execAsync(cmd);
 
     res.json({ success: true, message: `Backup created: ${backupFile}` });
   } catch (err) {
@@ -323,7 +328,7 @@ app.post('/api/backup', async (req, res) => {
 
 app.get('/api/backups', async (req, res) => {
   try {
-    const backupDir = process.env.BACKUP_DIR || '/azerothcore/backups';
+    const backupDir = process.env.BACKUP_DIR || '/app/backups';
     if (!fs.existsSync(backupDir)) {
       return res.json([]);
     }
@@ -333,6 +338,45 @@ app.get('/api/backups', async (req, res) => {
       date: fs.statSync(path.join(backupDir, f)).mtime
     }));
     res.json(files);
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.post('/api/backup/restore/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const backupDir = process.env.BACKUP_DIR || '/app/backups';
+    const backupFile = path.join(backupDir, filename);
+
+    if (!fs.existsSync(backupFile)) {
+      return res.status(404).json({ error: 'Backup file not found' });
+    }
+
+    const dbHost = process.env.DB_HOST || 'ac-database';
+    const dbUser = process.env.DB_USER || 'root';
+    const dbPass = process.env.DB_PASSWORD || 'password';
+    const cmd = `gunzip -c "${backupFile}" | mysql --host=${dbHost} --user=${dbUser} --password=${dbPass}`;
+    await execAsync(cmd);
+
+    res.json({ success: true, message: `Backup restored from ${filename}` });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+app.delete('/api/backup/:filename', async (req, res) => {
+  try {
+    const { filename } = req.params;
+    const backupDir = process.env.BACKUP_DIR || '/app/backups';
+    const backupFile = path.join(backupDir, filename);
+
+    if (!fs.existsSync(backupFile)) {
+      return res.status(404).json({ error: 'Backup file not found' });
+    }
+
+    fs.unlinkSync(backupFile);
+    res.json({ success: true, message: `Backup deleted: ${filename}` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

@@ -48,10 +48,12 @@ if grep -q "azerothcore-manager:" "$COMPOSE_FILE" 2>/dev/null; then
 fi
 
 # ── Build the service definition ───────────────────────────────────
-# We use a temp file to hold the YAML block so we can insert it at
-# the right place.  The heredoc is NOT single-quoted so that
-# ${VAR:-default} references are expanded at runtime.
-MANAGER_YAML=$(cat <<EOF
+# Write the YAML block to a temp file so we can insert it at the
+# right place without sed escaping issues.
+MANAGER_TMPFILE=$(mktemp)
+trap 'rm -f "$MANAGER_TMPFILE"' EXIT
+
+cat > "$MANAGER_TMPFILE" << 'MANAGER_YAML'
 
   azerothcore-manager:
     container_name: azerothcore-manager
@@ -61,12 +63,12 @@ MANAGER_YAML=$(cat <<EOF
     networks:
       - ac-network
     ports:
-      - \${DOCKER_MANAGER_EXTERNAL_PORT:-8088}:8088
+      - ${DOCKER_MANAGER_EXTERNAL_PORT:-8088}:8088
     environment:
       DB_HOST: ac-database
       DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: \${DOCKER_DB_ROOT_PASSWORD:-password}
+      DB_PASSWORD: ${DOCKER_DB_ROOT_PASSWORD:-password}
       DB_NAME: acore_auth
       LOG_DIR: /azerothcore/env/dist/logs
       CONFIG_DIR: /azerothcore/env/dist/etc
@@ -75,25 +77,32 @@ MANAGER_YAML=$(cat <<EOF
       # Docker socket — needed for container management API
       - /var/run/docker.sock:/var/run/docker.sock
       # Config files (read-write so the manager can edit them)
-      - \${DOCKER_VOL_ETC:-./env/dist/etc}:/azerothcore/env/dist/etc
+      - ${DOCKER_VOL_ETC:-./env/dist/etc}:/azerothcore/env/dist/etc
       # Logs (read-only)
-      - \${DOCKER_VOL_LOGS:-./env/dist/logs}:/azerothcore/env/dist/logs:ro
+      - ${DOCKER_VOL_LOGS:-./env/dist/logs}:/azerothcore/env/dist/logs:ro
       # Backups persistence
-      - \${DOCKER_VOL_BACKUPS:-./backups}:/app/backups
+      - ${DOCKER_VOL_BACKUPS:-./backups}:/app/backups
     depends_on:
       ac-database:
         condition: service_healthy
-EOF
-)
+MANAGER_YAML
 
 # ── Insert before top-level volumes: (if present) ──────────────────
 if grep -q '^volumes:' "$COMPOSE_FILE" 2>/dev/null; then
-    # Insert the YAML block before the first top-level "volumes:" line
-    sed -i "0,/^volumes:/{/^volumes:/i\\${MANAGER_YAML}}" "$COMPOSE_FILE"
+    # Use awk to insert the temp file contents before the first
+    # top-level "volumes:" line.
+    awk '
+        /^volumes:/ && !inserted {
+            while ((getline line < "'"$MANAGER_TMPFILE"'") > 0)
+                print line
+            inserted = 1
+        }
+        { print }
+    ' "$COMPOSE_FILE" > "${COMPOSE_FILE}.tmp" && mv "${COMPOSE_FILE}.tmp" "$COMPOSE_FILE"
     echo "✓ azerothcore-manager service inserted before volumes: in $COMPOSE_FILE"
 else
     # No top-level volumes: — append to end
-    printf '%s\n' "$MANAGER_YAML" >> "$COMPOSE_FILE"
+    cat "$MANAGER_TMPFILE" >> "$COMPOSE_FILE"
     echo "✓ azerothcore-manager service appended to $COMPOSE_FILE"
 fi
 

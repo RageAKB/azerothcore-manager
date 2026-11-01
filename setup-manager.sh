@@ -41,6 +41,18 @@ fi
 
 echo "Found docker-compose.yml at: $COMPOSE_FILE"
 
+# ── Load .env file if present ──────────────────────────────────────
+# Docker Compose reads .env automatically, but the bash script
+# needs it too to know the actual password.
+COMPOSE_DIR="$(dirname "$COMPOSE_FILE")"
+if [ -f "$COMPOSE_DIR/.env" ]; then
+    set -a
+    # shellcheck disable=SC1090
+    source "$COMPOSE_DIR/.env"
+    set +a
+    echo "Loaded .env from $COMPOSE_DIR"
+fi
+
 # ── Check if already inserted ──────────────────────────────────────
 if grep -q "azerothcore-manager:" "$COMPOSE_FILE" 2>/dev/null; then
     echo "azerothcore-manager service already present in $COMPOSE_FILE — nothing to do."

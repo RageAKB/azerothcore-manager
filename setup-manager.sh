@@ -123,18 +123,18 @@ echo "before running docker compose up."
 echo ""
 echo "Configuring caching_sha2_password authentication..."
 DB_ROOT_PASSWORD="${DOCKER_DB_ROOT_PASSWORD:-password}"
-if docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT 1" 2>/dev/null; then
+if docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT 1" 2>/dev/null; then
     # Set default auth plugin globally
-    docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
+    docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
       "SET PERSIST default_authentication_plugin = 'caching_sha2_password';" 2>/dev/null || true
     # Ensure root uses caching_sha2_password
-    docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
+    docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
       "ALTER USER 'root'@'%' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \
-    docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
+    docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
       "ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || true
     echo "✓ Database auth plugin configured to caching_sha2_password."
 else
     echo "⚠ Database not running yet — run this after docker compose up:"
-    echo "  docker compose exec ac-database mariadb -u root -p'${DB_ROOT_PASSWORD}' -e \"SET PERSIST default_authentication_plugin = 'caching_sha2_password';\""
-    echo "  docker compose exec ac-database mariadb -u root -p'${DB_ROOT_PASSWORD}' -e \"ALTER USER 'root'@'%' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;\""
+    echo "  docker compose exec ac-database mysql -u root -p'${DB_ROOT_PASSWORD}' -e \"SET PERSIST default_authentication_plugin = 'caching_sha2_password';\""
+    echo "  docker compose exec ac-database mysql -u root -p'${DB_ROOT_PASSWORD}' -e \"ALTER USER 'root'@'%' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;\""
 fi

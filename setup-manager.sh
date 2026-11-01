@@ -128,21 +128,20 @@ echo ""
 echo "To override the external port, set DOCKER_MANAGER_EXTERNAL_PORT"
 echo "before running docker compose up."
 
-# ── Configure caching_sha2_password authentication ─────────────────
-# Ensure the root user uses caching_sha2_password so the Node.js mysql2
-# driver can connect. The default_authentication_plugin variable only
-# exists in MySQL 8.0.27+, not in MariaDB, so we detect the DB type.
+# ── Configure mysql_native_password authentication ─────────────────
+# MariaDB does not support caching_sha2_password. Use mysql_native_password
+# which the Node.js mysql2 driver supports natively.
 echo ""
-echo "Configuring caching_sha2_password authentication..."
+echo "Configuring mysql_native_password authentication..."
 DB_ROOT_PASSWORD="${DOCKER_DB_ROOT_PASSWORD:-password}"
 if docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT 1" 2>/dev/null; then
-    # Ensure root uses caching_sha2_password (works on both MySQL and MariaDB)
+    # Ensure root uses mysql_native_password (works on both MySQL and MariaDB)
     docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
-      "ALTER USER 'root'@'%' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \
+      "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \
     docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
-      "ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || true
-    echo "✓ Database auth plugin configured to caching_sha2_password."
+      "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || true
+    echo "✓ Database auth plugin configured to mysql_native_password."
 else
     echo "⚠ Database not running yet — run this after docker compose up:"
-    echo "  docker compose exec ac-database mysql -u root -p'${DB_ROOT_PASSWORD}' -e \"ALTER USER 'root'@'%' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;\""
+    echo "  docker compose exec ac-database mysql -u root -p'${DB_ROOT_PASSWORD}' -e \"ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;\""
 fi

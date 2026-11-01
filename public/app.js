@@ -45,10 +45,15 @@ function showToast(message, type = 'success') {
   const toast = document.getElementById('toast');
   toast.textContent = message;
   toast.className = `toast ${type} show`;
+  toast.onclick = () => {
+    toast.classList.remove('show');
+    toast.onclick = null;
+  };
   
+  const duration = type === 'error' ? 15000 : 5000;
   setTimeout(() => {
     toast.classList.remove('show');
-  }, 3000);
+  }, duration);
 }
 
 // ============ API HELPERS ============
@@ -205,67 +210,34 @@ async function loadDatabase() {
       apiGet('/api/db/stats')
     ]);
     
-    // Database List
-    document.getElementById('dbList').innerHTML = schemas.map(db => `
-      <div class="info-item">
-        <span class="info-label">${db}</span>
-        <span class="info-value" style="cursor:pointer; color:var(--primary)" onclick="loadTables('${db}')">View tables</span>
-      </div>
-    `).join('');
+    // Schemas
+    document.getElementById('schemasList').innerHTML = schemas.length === 0
+      ? '<p class="text-muted">No schemas found</p>'
+      : schemas.map(s => `
+        <div class="status-item">
+          <div>
+            <strong>${s.name}</strong>
+            <div style="font-size: 0.8rem; color: var(--text-muted)">${s.table_count} tables</div>
+          </div>
+          <span class="status-badge status-running">${s.size_mb} MB</span>
+        </div>
+      `).join('');
     
-    // Populate dropdown
-    const select = document.getElementById('dbSelect');
-    select.innerHTML = schemas.map(db => `<option value="${db}">${db}</option>`).join('');
+    // Tables
+    document.getElementById('tablesList').innerHTML = tables.length === 0
+      ? '<p class="text-muted">No tables found</p>'
+      : tables.map(t => `
+        <div class="status-item">
+          <div>
+            <strong>${t.database}</strong>
+            <div style="font-size: 0.8rem; color: var(--text-muted)">${t.table_count} tables</div>
+          </div>
+          <span class="status-badge status-running">${t.size_mb} MB</span>
+        </div>
+      `).join('');
     
   } catch (err) {
     showToast(`Error loading database: ${err.message}`, 'error');
-  }
-}
-
-async function loadTables(database) {
-  try {
-    const tables = await apiGet(`/api/db/tables?database=${encodeURIComponent(database)}`);
-    document.getElementById('dbList').innerHTML = tables.map(t => `
-      <div class="info-item">
-        <span class="info-label">${t}</span>
-        <span class="info-value">${database}</span>
-      </div>
-    `).join('');
-  } catch (err) {
-    showToast(`Error loading tables: ${err.message}`, 'error');
-  }
-}
-
-async function executeQuery() {
-  const database = document.getElementById('dbSelect').value;
-  const query = document.getElementById('sqlQuery').value;
-  
-  if (!database || !query) {
-    showToast('Please select a database and enter a query.', 'error');
-    return;
-  }
-  
-  try {
-    const result = await apiPost('/api/db/query', { database, query });
-    
-    if (result.rows.length === 0) {
-      document.getElementById('queryResults').innerHTML = '<p class="text-muted">No results.</p>';
-      return;
-    }
-    
-    const headers = Object.keys(result.rows[0]);
-    let html = '<table><thead><tr>' + headers.map(h => `<th>${h}</th>`).join('') + '</tr></thead><tbody>';
-    
-    result.rows.forEach(row => {
-      html += '<tr>' + headers.map(h => `<td>${row[h] !== null ? row[h] : '<em>null</em>'}</td>`).join('') + '</tr>';
-    });
-    
-    html += '</tbody></table>';
-    html += `<p style="margin-top:0.5rem; color:var(--text-muted); font-size:0.85rem">${result.rowCount} row(s) returned</p>`;
-    
-    document.getElementById('queryResults').innerHTML = html;
-  } catch (err) {
-    showToast(`Query error: ${err.message}`, 'error');
   }
 }
 
@@ -273,365 +245,166 @@ async function executeQuery() {
 
 async function loadUsers() {
   try {
-    const rows = await apiGet('/api/users');
+    const users = await apiGet('/api/db/users');
     
-    const gmLevelNames = { 0: 'Player', 1: 'Moderator', 2: 'Game Master', 3: 'Administrator' };
-    const gmLevelColors = {
-      0: 'status-not-found',
-      1: 'status-starting',
-      2: 'status-running',
-      3: 'status-stopped'
-    };
+    document.getElementById('usersList').innerHTML = users.length === 0
+      ? '<p class="text-muted">No users found</p>'
+      : users.map(u => `
+        <div class="status-item">
+          <div>
+            <strong>${u.username}</strong>
+            <div style="font-size: 0.8rem; color: var(--text-muted)">${u.host}</div>
+          </div>
+          <span class="status-badge status-running">${u.password_type}</span>
+        </div>
+      `).join('');
     
-    document.getElementById('usersList').innerHTML = `
-      <table>
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Username</th>
-            <th>Email</th>
-            <th>GM Level</th>
-            <th>Status</th>
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          ${rows.map(u => `
-            <tr>
-              <td>${u.id}</td>
-              <td>${u.username}</td>
-              <td>${u.email || '-'}</td>
-              <td>
-                <select class="form-control" style="width:auto;padding:0.25rem 0.5rem;font-size:0.8rem" onchange="updateGmLevel(${u.id}, this.value)">
-                  <option value="0" ${u.gmlevel == 0 ? 'selected' : ''}>0 - Player</option>
-                  <option value="1" ${u.gmlevel == 1 ? 'selected' : ''}>1 - Moderator</option>
-                  <option value="2" ${u.gmlevel == 2 ? 'selected' : ''}>2 - Game Master</option>
-                  <option value="3" ${u.gmlevel == 3 ? 'selected' : ''}>3 - Administrator</option>
-                </select>
-              </td>
-              <td><span class="status-badge ${u.locked ? 'status-stopped' : 'status-running'}">${u.locked ? 'Locked' : 'Active'}</span></td>
-              <td>
-                <button class="btn btn-sm btn-danger" onclick="deleteUser(${u.id}, '${u.username}')">Delete</button>
-              </td>
-            </tr>
-          `).join('')}
-        </tbody>
-      </table>
-    `;
   } catch (err) {
-    document.getElementById('usersList').innerHTML = `<p class="text-muted">Error loading users: ${err.message}</p>`;
+    showToast(`Error loading users: ${err.message}`, 'error');
   }
 }
 
-async function createUser(event) {
-  event.preventDefault();
-  
-  const username = document.getElementById('username').value;
-  const password = document.getElementById('password').value;
-  const gmlevel = parseInt(document.getElementById('gmlevel').value);
-  
-  if (!username || !password) {
-    showToast('Username and password are required.', 'error');
-    return;
-  }
-  
-  try {
-    await apiPost('/api/users', { username, password, gmlevel });
-    showToast(`User ${username} created successfully with GM Level ${gmlevel}`);
-    document.getElementById('createUserForm').reset();
-    loadUsers();
-  } catch (err) {
-    showToast(`Error creating user: ${err.message}`, 'error');
-  }
-}
-
-async function updateGmLevel(id, gmlevel) {
-  try {
-    await apiPost(`/api/users/${id}/gmlevel`, { gmlevel: parseInt(gmlevel) });
-    showToast(`GM level updated for account ${id}`);
-  } catch (err) {
-    showToast(`Error updating GM level: ${err.message}`, 'error');
-  }
-}
-
-async function deleteUser(id, username) {
-  if (!confirm(`Delete user ${username}? This cannot be undone.`)) return;
-  
-  try {
-    await apiDelete(`/api/users/${id}`);
-    showToast(`User ${username} deleted`);
-    loadUsers();
-  } catch (err) {
-    showToast(`Error deleting user: ${err.message}`, 'error');
-  }
-}
-
-// ============ CONFIGURATION ============
+// ============ CONFIG ============
 
 async function loadConfigList() {
   try {
-    const files = await apiGet('/api/config');
+    const configs = await apiGet('/api/config/list');
     
-    document.getElementById('configList').innerHTML = files.length === 0 
-      ? '<p class="text-muted">No configuration files found</p>'
-      : files.map(f => `
-        <div class="info-item" style="cursor:pointer; padding:8px; border-bottom:1px solid #eee;" onclick="loadConfigFile('${f}')">
-          <strong>${f}</strong>
-          <span style="float:right; color:#666;">Click to edit</span>
+    document.getElementById('configList').innerHTML = configs.length === 0
+      ? '<p class="text-muted">No config files found</p>'
+      : configs.map(c => `
+        <div class="status-item">
+          <div>
+            <strong>${c.name}</strong>
+            <div style="font-size: 0.8rem; color: var(--text-muted)">${c.size} bytes</div>
+          </div>
+          <div style="display: flex; gap: 0.5rem;">
+            <button class="btn btn-sm btn-primary" onclick="viewConfig('${c.name}')">View</button>
+            <button class="btn btn-sm btn-secondary" onclick="editConfig('${c.name}')">Edit</button>
+          </div>
         </div>
       `).join('');
+    
   } catch (err) {
-    document.getElementById('configList').innerHTML = `<p class="text-muted">Error: ${err.message}</p>`;
+    showToast(`Error loading configs: ${err.message}`, 'error');
   }
 }
 
-async function loadConfigFile(filename) {
+async function viewConfig(filename) {
   try {
-    currentConfigFile = filename;
-    const data = await apiGet(`/api/config/${encodeURIComponent(filename)}`);
-    document.getElementById('configEditorTitle').textContent = `Editing: ${filename}`;
-    document.getElementById('configEditor').value = data.content;
+    const content = await apiGet(`/api/config/view/${encodeURIComponent(filename)}`);
+    document.getElementById('configContent').innerHTML = `<pre>${escapeHtml(content)}</pre>`;
+    document.getElementById('configModal').classList.add('active');
   } catch (err) {
-    showToast(`Error loading config: ${err.message}`, 'error');
+    showToast(`Error reading config: ${err.message}`, 'error');
+  }
+}
+
+async function editConfig(filename) {
+  try {
+    const content = await apiGet(`/api/config/view/${encodeURIComponent(filename)}`);
+    document.getElementById('configEditor').value = content;
+    document.getElementById('configFilename').value = filename;
+    document.getElementById('configModal').classList.add('active');
+  } catch (err) {
+    showToast(`Error reading config: ${err.message}`, 'error');
   }
 }
 
 async function saveConfig() {
-  if (!currentConfigFile) {
-    showToast('No file selected.', 'error');
-    return;
-  }
-  
+  const filename = document.getElementById('configFilename').value;
   const content = document.getElementById('configEditor').value;
   
   try {
-    await apiPost(`/api/config/${encodeURIComponent(currentConfigFile)}`, { content });
-    showToast('Configuration saved successfully');
+    await apiPost(`/api/config/save/${encodeURIComponent(filename)}`, { content });
+    showToast('Config saved successfully');
+    document.getElementById('configModal').classList.remove('active');
+    loadConfigList();
   } catch (err) {
     showToast(`Error saving config: ${err.message}`, 'error');
   }
 }
 
-async function loadConfig() {
-  if (currentConfigFile) {
-    await loadConfigFile(currentConfigFile);
-  }
-}
-
-// ============ BACKUPS ============
-
-async function loadBackups() {
-  try {
-    const backups = await apiGet('/api/backups');
-    
-    document.getElementById('backupsList').innerHTML = backups.length === 0 
-      ? '<p class="text-muted">No backups found</p>'
-      : `
-        <table>
-          <thead>
-            <tr>
-              <th>Name</th>
-              <th>Size</th>
-              <th>Date</th>
-              <th>Actions</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${backups.map(b => `
-              <tr>
-                <td>${b.name}</td>
-                <td>${formatBytes(b.size)}</td>
-                <td>${new Date(b.date).toLocaleString()}</td>
-                <td>
-                  <button class="btn btn-sm btn-primary" onclick="restoreBackup('${b.name}')">Restore</button>
-                  <button class="btn btn-sm btn-danger" onclick="deleteBackup('${b.name}')">Delete</button>
-                </td>
-              </tr>
-            `).join('')}
-          </tbody>
-        </table>
-      `;
-  } catch (err) {
-    document.getElementById('backupsList').innerHTML = `<p class="text-muted">Error: ${err.message}</p>`;
-  }
-}
-
-async function createBackup() {
-  const checkboxes = document.querySelectorAll('#backup input[type="checkbox"]:checked');
-  const databases = Array.from(checkboxes).map(cb => cb.value);
-  
-  if (databases.length === 0) {
-    showToast('Select at least one database.', 'error');
-    return;
-  }
-  
-  try {
-    await apiPost('/api/backup', { databases });
-    showToast('Backup created successfully');
-    loadBackups();
-  } catch (err) {
-    showToast(`Error creating backup: ${err.message}`, 'error');
-  }
-}
-
-async function restoreBackup(filename) {
-  if (!confirm(`Restore from ${filename}? This will overwrite current data.`)) return;
-  
-  try {
-    await apiPost(`/api/backup/restore/${encodeURIComponent(filename)}`, {});
-    showToast('Backup restored successfully');
-  } catch (err) {
-    showToast(`Error restoring backup: ${err.message}`, 'error');
-  }
-}
-
-async function deleteBackup(filename) {
-  if (!confirm(`Delete ${filename}?`)) return;
-  
-  try {
-    await apiDelete(`/api/backup/${encodeURIComponent(filename)}`);
-    showToast('Backup deleted');
-    loadBackups();
-  } catch (err) {
-    showToast(`Error deleting backup: ${err.message}`, 'error');
-  }
-}
-
 // ============ LOGS ============
 
-const LOG_FILES = [
-  { name: 'Server.log', label: '🌍 World Server' },
-  { name: 'Auth.log', label: '🔐 Auth Server' },
-  { name: 'DBImport.log', label: '📦 DB Import' },
-  { name: 'Errors.log', label: '⚠️ Errors' }
-];
-
-function loadLogs() {
-  // Set active tab
-  document.querySelectorAll('.log-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.file === currentLogFile);
-  });
-  
-  // Load log content
-  loadLogContent();
-  
-  // Setup auto-refresh
-  setupAutoRefresh();
+async function loadLogs() {
+  try {
+    const logFiles = await apiGet('/api/logs/list');
+    
+    document.getElementById('logFilesList').innerHTML = logFiles.length === 0
+      ? '<p class="text-muted">No log files found</p>'
+      : logFiles.map(f => `
+        <div class="status-item">
+          <div>
+            <strong>${f.name}</strong>
+            <div style="font-size: 0.8rem; color: var(--text-muted)">${f.size} bytes</div>
+          </div>
+          <button class="btn btn-sm btn-primary" onclick="selectLogFile('${f.name}')">View</button>
+        </div>
+      `).join('');
+    
+  } catch (err) {
+    showToast(`Error loading logs: ${err.message}`, 'error');
+  }
 }
 
-function switchLogFile(filename) {
+async function selectLogFile(filename) {
   currentLogFile = filename;
-  
-  // Update tab UI
-  document.querySelectorAll('.log-tab').forEach(tab => {
-    tab.classList.toggle('active', tab.dataset.file === filename);
-  });
-  
-  // Clear and reload
-  rawLogLines = [];
-  document.getElementById('logOutput').innerHTML = '';
-  document.getElementById('logSearch').value = '';
-  loadLogContent();
+  document.getElementById('currentLogFile').textContent = filename;
+  await loadLogContent();
 }
 
-function loadLogContent() {
-  const lines = document.getElementById('logLines').value || '200';
-  const output = document.getElementById('logOutput');
-  
-  output.innerHTML = '<div style="color:#666">Loading...</div>';
-  
-  fetch(`/api/logs/${encodeURIComponent(currentLogFile)}?lines=${lines}`)
-    .then(res => res.json())
-    .then(data => {
-      if (data.error) {
-        output.innerHTML = `<div style="color:#f87171">Error: ${data.error}</div>`;
-        return;
-      }
-      
-      rawLogLines = data.lines || [];
-      renderLogLines(rawLogLines);
-    })
-    .catch(err => {
-      output.innerHTML = `<div style="color:#f87171">Error: ${err.message}</div>`;
-    });
-}
-
-function renderLogLines(lines) {
-  const output = document.getElementById('logOutput');
-  const searchTerm = document.getElementById('logSearch').value.toLowerCase();
-  
-  if (lines.length === 0) {
-    output.innerHTML = '<div style="color:#666">No log entries</div>';
+async function loadLogContent() {
+  if (!currentLogFile) {
+    showToast('Please select a log file first.', 'error');
     return;
   }
   
-  let html = '';
-  let counts = { info: 0, warn: 0, error: 0, debug: 0, critical: 0, success: 0, system: 0 };
-  
-  lines.forEach((line, index) => {
-    const lineNum = index + 1;
-    const level = detectLogLevel(line);
-    const isMatch = !searchTerm || line.toLowerCase().includes(searchTerm);
+  try {
+    const lines = await apiGet(`/api/logs/view/${encodeURIComponent(currentLogFile)}`);
+    rawLogLines = lines;
     
-    if (counts[level] !== undefined) counts[level]++;
+    const logOutput = document.getElementById('logOutput');
+    logOutput.innerHTML = lines.map(line => {
+      // Colorize log levels
+      let colored = escapeHtml(line);
+      if (line.includes('ERROR') || line.includes('CRITICAL')) {
+        colored = colored.replace(/(ERROR|CRITICAL)/g, '<span style="color:#ff4444">$1</span>');
+      } else if (line.includes('WARNING') || line.includes('WARN')) {
+        colored = colored.replace(/(WARNING|WARN)/g, '<span style="color:#ffaa00">$1</span>');
+      } else if (line.includes('INFO')) {
+        colored = colored.replace(/INFO/g, '<span style="color:#44ff44">INFO</span>');
+      }
+      return `<div>${colored}</div>`;
+    }).join('');
     
-    const highlightedLine = searchTerm ? highlightText(line, searchTerm) : escapeHtml(line);
+    // Auto-scroll to bottom
+    logOutput.scrollTop = logOutput.scrollHeight;
     
-    html += `<span class="log-line ${isMatch ? '' : 'filtered'}" data-line="${lineNum}">`;
-    html += `<span class="log-line-number">${lineNum}</span>`;
-    html += `<span class="log-line-content log-level-${level}">${highlightedLine}</span>`;
-    html += `</span>\n`;
-  });
-  
-  output.innerHTML = html;
-  
-  // Update stats
-  updateLogStats(counts, lines.length);
-  
-  // Scroll to bottom
-  output.scrollTop = output.scrollHeight;
+  } catch (err) {
+    showToast(`Error loading log: ${err.message}`, 'error');
+  }
 }
 
-function filterLogLines() {
-  renderLogLines(rawLogLines);
-}
-
-function updateLogStats(counts, total) {
-  // Remove existing stats
-  const existing = document.querySelector('.log-stats');
-  if (existing) existing.remove();
+function filterLogs() {
+  const searchTerm = document.getElementById('logSearch').value.toLowerCase();
+  const logOutput = document.getElementById('logOutput');
   
-  const statsHtml = `
-    <div class="log-stats">
-      <span><span class="log-dot info"></span> INFO: ${counts.info}</span>
-      <span><span class="log-dot warn"></span> WARN: ${counts.warn}</span>
-      <span><span class="log-dot error"></span> ERROR: ${counts.error}</span>
-      <span><span class="log-dot debug"></span> DEBUG: ${counts.debug}</span>
-      <span style="margin-left:auto">Total: ${total} lines</span>
-    </div>
-  `;
+  if (!searchTerm) {
+    loadLogContent();
+    return;
+  }
   
-  const wrapper = document.querySelector('.log-output-wrapper');
-  wrapper.insertAdjacentHTML('afterbegin', statsHtml);
-}
-
-function detectLogLevel(line) {
-  const lower = line.toLowerCase();
-  
-  if (lower.includes('critical') || lower.includes('fatal')) return 'critical';
-  if (lower.includes('error') || lower.includes('fail')) return 'error';
-  if (lower.includes('warn')) return 'warn';
-  if (lower.includes('debug')) return 'debug';
-  if (lower.includes('success') || lower.includes('ok') || lower.includes('loaded')) return 'success';
-  if (lower.includes('system') || lower.includes('info')) return 'info';
-  
-  return 'system';
-}
-
-function highlightText(text, term) {
-  const escaped = escapeHtml(text);
-  const regex = new RegExp(`(${escapeRegex(term)})`, 'gi');
-  return escaped.replace(regex, '<span class="log-highlight">$1</span>');
+  const filtered = rawLogLines.filter(line => line.toLowerCase().includes(searchTerm));
+  logOutput.innerHTML = filtered.map(line => {
+    let colored = escapeHtml(line);
+    if (line.includes('ERROR') || line.includes('CRITICAL')) {
+      colored = colored.replace(/(ERROR|CRITICAL)/g, '<span style="color:#ff4444">$1</span>');
+    } else if (line.includes('WARNING') || line.includes('WARN')) {
+      colored = colored.replace(/(WARNING|WARN)/g, '<span style="color:#ffaa00">$1</span>');
+    }
+    return `<div>${colored}</div>`;
+  }).join('');
 }
 
 function escapeHtml(str) {

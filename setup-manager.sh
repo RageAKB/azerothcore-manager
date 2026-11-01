@@ -1,6 +1,6 @@
 #!/bin/bash
 # setup-manager.sh
-# Appends the azerothcore-manager service to a local copy of the
+# Inserts the azerothcore-manager service into a local copy of the
 # AzerothCore WotLK docker-compose.yml so the manager runs alongside
 # the server when the manager lives in a subfolder of the WotLK root.
 #
@@ -13,7 +13,8 @@
 #   ./setup-manager.sh
 #
 # The script finds docker-compose.yml by walking up from the current
-# directory, then appends the manager service definition.
+# directory, then inserts the manager service definition before the
+# top-level volumes: section (if present) to avoid YAML parsing issues.
 # It is idempotent — running it twice will not duplicate the service.
 
 set -euo pipefail
@@ -40,25 +41,17 @@ fi
 
 echo "Found docker-compose.yml at: $COMPOSE_FILE"
 
-# The manager lives relative to the compose file root.
-# If we're already in the manager folder, its parent is the compose root.
-# Otherwise use SCRIPT_DIR as the relative path.
-if [ "$SCRIPT_DIR" = "$SEARCH_DIR" ]; then
-    MANAGER_REL="azerothcore-manager"
-else
-    MANAGER_REL="$(realpath --relative-to="$(dirname "$COMPOSE_FILE")" "$SCRIPT_DIR")"
-fi
-
-echo "Manager relative path: $MANAGER_REL"
-
-# ── Check if already appended ──────────────────────────────────────
+# ── Check if already inserted ──────────────────────────────────────
 if grep -q "azerothcore-manager:" "$COMPOSE_FILE" 2>/dev/null; then
     echo "azerothcore-manager service already present in $COMPOSE_FILE — nothing to do."
     exit 0
 fi
 
-# ── Append service definition ──────────────────────────────────────
-cat >> "$COMPOSE_FILE" << 'MANAGER_SERVICE'
+# ── Build the service definition ───────────────────────────────────
+# We use a temp file to hold the YAML block so we can insert it at
+# the right place.  The heredoc is NOT single-quoted so that
+# ${VAR:-default} references are expanded at runtime.
+MANAGER_YAML=$(cat <<EOF
 
   azerothcore-manager:
     container_name: azerothcore-manager
@@ -68,32 +61,42 @@ cat >> "$COMPOSE_FILE" << 'MANAGER_SERVICE'
     networks:
       - ac-network
     ports:
-      - ${DOCKER_MANAGER_EXTERNAL_PORT:-8088}:8088
+      - \${DOCKER_MANAGER_EXTERNAL_PORT:-8088}:8088
     environment:
       DB_HOST: ac-database
       DB_PORT: "3306"
       DB_USER: root
-      DB_PASSWORD: ${DOCKER_DB_ROOT_PASSWORD:-password}
+      DB_PASSWORD: \${DOCKER_DB_ROOT_PASSWORD:-password}
       DB_NAME: acore_auth
       LOG_DIR: /azerothcore/env/dist/logs
       CONFIG_DIR: /azerothcore/env/dist/etc
       BACKUP_DIR: /app/backups
     volumes:
-    # Docker socket — needed for container management API
+      # Docker socket — needed for container management API
       - /var/run/docker.sock:/var/run/docker.sock
       # Config files (read-write so the manager can edit them)
-      - ${DOCKER_VOL_ETC:-./env/dist/etc}:/azerothcore/env/dist/etc
+      - \${DOCKER_VOL_ETC:-./env/dist/etc}:/azerothcore/env/dist/etc
       # Logs (read-only)
-      - ${DOCKER_VOL_LOGS:-./env/dist/logs}:/azerothcore/env/dist/logs:ro
+      - \${DOCKER_VOL_LOGS:-./env/dist/logs}:/azerothcore/env/dist/logs:ro
       # Backups persistence
-      - ${DOCKER_VOL_BACKUPS:-./backups}:/app/backups
+      - \${DOCKER_VOL_BACKUPS:-./backups}:/app/backups
     depends_on:
       ac-database:
         condition: service_healthy
-MANAGER_SERVICE
+EOF
+)
 
-echo ""
-echo "✓ azerothcore-manager service appended to $COMPOSE_FILE"
+# ── Insert before top-level volumes: (if present) ──────────────────
+if grep -q '^volumes:' "$COMPOSE_FILE" 2>/dev/null; then
+    # Insert the YAML block before the first top-level "volumes:" line
+    sed -i "0,/^volumes:/{/^volumes:/i\\${MANAGER_YAML}}" "$COMPOSE_FILE"
+    echo "✓ azerothcore-manager service inserted before volumes: in $COMPOSE_FILE"
+else
+    # No top-level volumes: — append to end
+    printf '%s\n' "$MANAGER_YAML" >> "$COMPOSE_FILE"
+    echo "✓ azerothcore-manager service appended to $COMPOSE_FILE"
+fi
+
 echo ""
 echo "To start everything:"
 echo "  docker compose up -d --build"
@@ -104,20 +107,25 @@ echo ""
 echo "To override the external port, set DOCKER_MANAGER_EXTERNAL_PORT"
 echo "before running docker compose up."
 
-# ── Fix database authentication plugin ─────────────────────────────
-# MariaDB 10.4+ uses caching_sha2_password by default, but Alpine
-# MariaDB client doesn't ship the plugin library. Switch root to
-# mysql_native_password so backup/restore works.
+# ── Configure caching_sha2_password authentication ─────────────────
+# Ensure MariaDB uses caching_sha2_password as the default auth plugin
+# and that the root user is configured to use it. The Node.js mysql2
+# driver supports caching_sha2_password natively.
 echo ""
-echo "Fixing database authentication plugin..."
+echo "Configuring caching_sha2_password authentication..."
 DB_ROOT_PASSWORD="${DOCKER_DB_ROOT_PASSWORD:-password}"
 if docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT 1" 2>/dev/null; then
-  docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
-    "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \
-  docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
-    "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null
-  echo "✓ Database auth plugin fixed."
+    # Set default auth plugin globally
+    docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
+      "SET PERSIST default_authentication_plugin = 'caching_sha2_password';" 2>/dev/null || true
+    # Ensure root uses caching_sha2_password
+    docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
+      "ALTER USER 'root'@'%' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \
+    docker compose exec ac-database mariadb -u root -p"${DB_ROOT_PASSWORD}" -e \
+      "ALTER USER 'root'@'localhost' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || true
+    echo "✓ Database auth plugin configured to caching_sha2_password."
 else
-  echo "⚠ Database not running yet — run this after docker compose up:"
-  echo "  docker compose exec ac-database mariadb -u root -p'${DB_ROOT_PASSWORD}' -e \"ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;\""
+    echo "⚠ Database not running yet — run this after docker compose up:"
+    echo "  docker compose exec ac-database mariadb -u root -p'${DB_ROOT_PASSWORD}' -e \"SET PERSIST default_authentication_plugin = 'caching_sha2_password';\""
+    echo "  docker compose exec ac-database mariadb -u root -p'${DB_ROOT_PASSWORD}' -e \"ALTER USER 'root'@'%' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;\""
 fi

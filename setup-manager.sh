@@ -136,20 +136,6 @@ echo ""
 echo "Configuring caching_sha2_password authentication..."
 DB_ROOT_PASSWORD="${DOCKER_DB_ROOT_PASSWORD:-password}"
 if docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT 1" 2>/dev/null; then
-    # Detect whether this is MySQL or MariaDB
-    DB_VERSION=$(docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -N -e "SELECT VERSION();" 2>/dev/null || echo "")
-    if echo "$DB_VERSION" | grep -qi "mariadb"; then
-        DB_TYPE="mariadb"
-    else
-        DB_TYPE="mysql"
-    fi
-
-    if [ "$DB_TYPE" = "mysql" ]; then
-        # MySQL 8.0.27+ supports default_authentication_plugin
-        docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
-          "SET PERSIST default_authentication_plugin = 'caching_sha2_password';" 2>/dev/null || true
-    fi
-
     # Ensure root uses caching_sha2_password (works on both MySQL and MariaDB)
     docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
       "ALTER USER 'root'@'%' IDENTIFIED WITH caching_sha2_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \

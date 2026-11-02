@@ -317,16 +317,25 @@ app.post('/api/backup', async (req, res) => {
     const dbHost = process.env.DB_HOST || 'ac-database';
     const dbUser = process.env.DB_USER || 'root';
     const dbPass = process.env.DB_PASSWORD || 'password';
-    // Use MYSQL_PWD env var instead of --password= to avoid leaking in ps/error output
-    const cmd = `set -o pipefail && MYSQL_PWD='${dbPass}' mysqldump --host=${dbHost} --user=${dbUser} ${dbArg} 2>&1 | gzip > "${backupFile}"`;
+    const dumpFile = '/tmp/acore_dump.sql';
+    const errFile = '/tmp/acore_dump_err.txt';
+    // Capture stderr separately so MySQL errors surface in Node output
+    const cmd = `set -o pipefail && MYSQL_PWD='${dbPass}' mysqldump --host=${dbHost} --user=${dbUser} ${dbArg} > "${dumpFile}" 2>"${errFile}" && gzip -c "${dumpFile}" > "${backupFile}" && cat "${errFile}"`;
     try {
       await execAsync(cmd);
     } catch (err) {
       if (fs.existsSync(backupFile)) {
         fs.unlinkSync(backupFile);
       }
+      // Append MySQL stderr to the error message for debugging
+      let mysqlErr = '';
+      if (fs.existsSync(errFile)) {
+        mysqlErr = fs.readFileSync(errFile, 'utf8');
+        fs.unlinkSync(errFile);
+      }
       const maskedMsg = err.message.split(dbPass).join('***');
-      throw new Error(`mysqldump failed: ${maskedMsg}`);
+      const detail = mysqlErr ? `\nMySQL error: ${mysqlErr}` : '';
+      throw new Error(`mysqldump failed: ${maskedMsg}${detail}`);
     }
 
     const stat = fs.statSync(backupFile);

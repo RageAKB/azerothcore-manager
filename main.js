@@ -50,6 +50,16 @@ function isNetworkNotFound(err) {
   return err.message && (err.message.includes('No such network') || err.message.includes('docker.sock') || err.message.includes('dial unix'));
 }
 
+// Container configuration from environment variables
+const CONTAINER_NAMES = {
+  auth: process.env.AC_AUTH_CONTAINER || 'ac-authserver',
+  world: process.env.AC_WORLD_CONTAINER || 'ac-worldserver',
+  database: process.env.AC_DATABASE_CONTAINER || 'ac-database'
+};
+
+// Network name from environment variable
+const AC_NETWORK = process.env.AC_NETWORK || 'ac-network';
+
 // ============ SYSTEM ENDPOINTS ============
 
 app.get('/api/system/info', async (req, res) => {
@@ -76,7 +86,7 @@ app.get('/api/system/info', async (req, res) => {
 
 app.get('/api/system/containers', async (req, res) => {
   try {
-    const { stdout } = await execAsync('docker network inspect ac-network');
+    const { stdout } = await execAsync('docker network inspect ' + AC_NETWORK);
     if (!stdout.trim()) return res.json([]);
     const network = JSON.parse(stdout);
     const containers = [];
@@ -116,10 +126,10 @@ app.post('/api/system/container/:action/:name', async (req, res) => {
 
 app.get('/api/server/status', async (req, res) => {
   try {
-    const targetContainers = ['ac-authserver', 'ac-worldserver', 'ac-database'];
+    const targetContainers = [CONTAINER_NAMES.auth, CONTAINER_NAMES.world, CONTAINER_NAMES.database];
     const statuses = {};
 
-    const { stdout } = await execAsync('docker network inspect ac-network');
+    const { stdout } = await execAsync('docker network inspect ' + AC_NETWORK);
     if (!stdout.trim()) {
       targetContainers.forEach(c => { statuses[c] = 'not_found'; });
       return res.json(statuses);
@@ -140,9 +150,9 @@ app.get('/api/server/status', async (req, res) => {
   } catch (err) {
     if (isDockerNotFound(err) || isNetworkNotFound(err)) {
       return res.json({
-        'ac-authserver': 'not_found',
-        'ac-worldserver': 'not_found',
-        'ac-database': 'not_found'
+        [CONTAINER_NAMES.auth]: 'not_found',
+        [CONTAINER_NAMES.world]: 'not_found',
+        [CONTAINER_NAMES.database]: 'not_found'
       });
     }
     res.status(500).json({ error: err.message });

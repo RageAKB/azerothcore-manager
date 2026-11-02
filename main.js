@@ -320,7 +320,7 @@ app.post('/api/backup', async (req, res) => {
     const dumpFile = '/tmp/acore_dump.sql';
     const errFile = '/tmp/acore_dump_err.txt';
     // Capture stderr separately so MySQL errors surface in Node output
-    const cmd = `set -o pipefail && MYSQL_PWD='${dbPass}' mysqldump --host=${dbHost} --user=${dbUser} --skip-ssl ${dbArg} > "${dumpFile}" 2>"${errFile}" && gzip -c "${dumpFile}" > "${backupFile}" && cat "${errFile}"`;
+    const cmd = `bash -c 'set -o pipefail && MYSQL_PWD="${dbPass}" mysqldump --host=${dbHost} --user=${dbUser} --skip-ssl ${dbArg} > "${dumpFile}" 2>"${errFile}" && gzip -c "${dumpFile}" > "${backupFile}" && cat "${errFile}"'`;
     try {
       await execAsync(cmd);
     } catch (err) {

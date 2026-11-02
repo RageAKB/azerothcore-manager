@@ -317,10 +317,24 @@ app.post('/api/backup', async (req, res) => {
     const dbHost = process.env.DB_HOST || 'ac-database';
     const dbUser = process.env.DB_USER || 'root';
     const dbPass = process.env.DB_PASSWORD || 'password';
-    const cmd = `mysqldump --host=${dbHost} --user=${dbUser} --password=${dbPass} ${dbArg} | gzip > "${backupFile}"`;
-    await execAsync(cmd);
+    // Use pipefail so gzip doesn't mask mysqldump errors; remove file on failure
+    const cmd = `set -o pipefail && mysqldump --host=${dbHost} --user=${dbUser} --password=${dbPass} ${dbArg} 2>&1 | gzip > "${backupFile}"`;
+    try {
+      await execAsync(cmd);
+    } catch (err) {
+      if (fs.existsSync(backupFile)) {
+        fs.unlinkSync(backupFile);
+      }
+      throw new Error(`mysqldump failed: ${err.message}`);
+    }
 
-    res.json({ success: true, message: `Backup created: ${backupFile}` });
+    const stat = fs.statSync(backupFile);
+    if (stat.size < 100) {
+      fs.unlinkSync(backupFile);
+      throw new Error('Backup file is too small (likely empty)');
+    }
+
+    res.json({ success: true, message: `Backup created: ${backupFile} (${stat.size} bytes)` });
   } catch (err) {
     res.status(500).json({ error: err.message });
   }

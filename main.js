@@ -356,8 +356,8 @@ app.post('/api/backup/restore/:filename', async (req, res) => {
     const dbHost = process.env.DB_HOST || 'ac-database';
     const dbUser = process.env.DB_USER || 'root';
     const dbPass = process.env.DB_PASSWORD || 'password';
-    // Use --default-auth=mysql_native_password because Alpine mysql IS mariadb (symlink) and doesn't support caching_sha2_password
-    const cmd = `gunzip -c "${backupFile}" | mariadb --host=${dbHost} --user=${dbUser} --password=${dbPass} --skip-ssl --default-auth=mysql_native_password`;
+    // Use mysql CLI from MySQL 8.4 image (supports caching_sha2_password)
+    const cmd = `gunzip -c "${backupFile}" | mysql --host=${dbHost} --user=${dbUser} --password=${dbPass} --skip-ssl`;
     await execAsync(cmd);
 
     res.json({ success: true, message: `Backup restored from ${filename}` });

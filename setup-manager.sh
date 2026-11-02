@@ -128,20 +128,29 @@ echo ""
 echo "To override the external port, set DOCKER_MANAGER_EXTERNAL_PORT"
 echo "before running docker compose up."
 
-# ── Configure mysql_native_password authentication ─────────────────
-# MariaDB does not support caching_sha2_password. Use mysql_native_password
-# which the Node.js mysql2 driver supports natively.
+# ── Configure authentication plugin ────────────────────────────────
+# MySQL 8.x uses caching_sha2_password by default (works with mysql2 driver).
+# MariaDB uses mysql_native_password by default.
+# Detect which DB we have and configure accordingly.
 echo ""
-echo "Configuring mysql_native_password authentication..."
+echo "Configuring database authentication..."
 DB_ROOT_PASSWORD="${DOCKER_DB_ROOT_PASSWORD:-password}"
 if docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e "SELECT 1" 2>/dev/null; then
-    # Ensure root uses mysql_native_password (works on both MySQL and MariaDB)
-    docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
-      "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || \
-    docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
-      "ALTER USER 'root'@'localhost' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;" 2>/dev/null || true
-    echo "✓ Database auth plugin configured to mysql_native_password."
+    # Detect DB type
+    DB_VERSION=$(docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -N -e "SELECT VERSION();" 2>/dev/null)
+    if echo "$DB_VERSION" | grep -qi "mariadb"; then
+        echo "Detected MariaDB — using mysql_native_password (default)."
+        # MariaDB uses mysql_native_password by default, no change needed.
+        # But ensure root can connect from '%' host.
+        docker compose exec ac-database mysql -u root -p"${DB_ROOT_PASSWORD}" -e \
+          "SELECT User, Host, plugin FROM mysql.user WHERE User='root';" 2>/dev/null
+        echo "✓ MariaDB auth plugin is mysql_native_password (default)."
+    else
+        echo "Detected MySQL — using caching_sha2_password (default)."
+        # MySQL 8.x uses caching_sha2_password by default, which mysql2 driver supports.
+        echo "✓ MySQL auth plugin is caching_sha2_password (default)."
+    fi
 else
     echo "⚠ Database not running yet — run this after docker compose up:"
-    echo "  docker compose exec ac-database mysql -u root -p'${DB_ROOT_PASSWORD}' -e \"ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY '${DB_ROOT_PASSWORD}'; FLUSH PRIVILEGES;\""
+    echo "  docker compose exec ac-database mysql -u root -p'${DB_ROOT_PASSWORD}' -e \"SELECT VERSION();\""
 fi

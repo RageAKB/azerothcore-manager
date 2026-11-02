@@ -1,6 +1,3 @@
 #!/bin/sh
-# Fix permissions on mounted backup directory so the node user can write
-if [ -d /app/backups ]; then
-    chmod 777 /app/backups
-fi
+# Backup directory is mounted from host and already writable
 exec node main.js

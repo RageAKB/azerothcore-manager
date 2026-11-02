@@ -325,7 +325,7 @@ app.post('/api/backup', async (req, res) => {
       if (fs.existsSync(backupFile)) {
         fs.unlinkSync(backupFile);
       }
-      const maskedMsg = err.message.replace(new RegExp(dbPass.replace(/[.*+?^${}()|[\]/g, '\\$&'), 'g'), '***');
+      const maskedMsg = err.message.split(dbPass).join('***');
       throw new Error(`mysqldump failed: ${maskedMsg}`);
     }
 

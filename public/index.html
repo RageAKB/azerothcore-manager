@@ -209,8 +209,24 @@
     </section>
   </main>
 
-  <div id="toast" class="toast"></div>
+    <!-- Backup/Restore Status Modal -->
+    <div id="statusModal" class="status-modal">
+      <div class="status-modal-content">
+        <div class="status-modal-header">
+          <h3 id="statusModalTitle">Backup in Progress</h3>
+          <button class="status-modal-close" onclick="closeStatusModal()">✕</button>
+        </div>
+        <div class="status-modal-body">
+          <div class="status-spinner"></div>
+          <p id="statusModalMessage">Creating backup...</p>
+          <div id="statusModalDetails" class="status-details"></div>
+        </div>
+      </div>
+    </div>
 
-  <script src="app.js"></script>
+    <div id="toast" class="toast"></div>
+
+    <script src="status_modal.js"></script>
+    <script src="app.js"></script>
 </body>
 </html>

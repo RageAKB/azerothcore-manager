@@ -542,6 +542,122 @@ tr:hover {
   background: var(--bg-card-hover);
 }
 
+/* Status Modal */
+.status-modal {
+  display: none;
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(0, 0, 0, 0.7);
+  z-index: 2000;
+  align-items: center;
+  justify-content: center;
+}
+
+.status-modal.show {
+  display: flex;
+}
+
+.status-modal-content {
+  background: var(--bg-card);
+  border-radius: 12px;
+  padding: 2rem;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.3);
+  border: 1px solid var(--border-color);
+}
+
+.status-modal-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 1.5rem;
+}
+
+.status-modal-header h3 {
+  color: var(--text-primary);
+  font-size: 1.25rem;
+  font-weight: 600;
+}
+
+.status-modal-close {
+  background: none;
+  border: none;
+  color: var(--text-secondary);
+  font-size: 1.5rem;
+  cursor: pointer;
+  padding: 0.25rem;
+  line-height: 1;
+  transition: color 0.2s;
+}
+
+.status-modal-close:hover {
+  color: var(--text-primary);
+}
+
+.status-modal-body {
+  color: var(--text-secondary);
+  font-size: 0.95rem;
+  line-height: 1.6;
+}
+
+.status-modal-body .status-message {
+  margin-bottom: 1rem;
+  padding: 0.75rem;
+  background: var(--bg-card-hover);
+  border-radius: 8px;
+  border-left: 3px solid var(--primary);
+}
+
+.status-modal-body .status-message.success {
+  border-left-color: var(--success);
+}
+
+.status-modal-body .status-message.error {
+  border-left-color: var(--danger);
+}
+
+.status-modal-body .status-message.warning {
+  border-left-color: var(--warning);
+}
+
+.status-modal-body .status-details {
+  margin-top: 1rem;
+  padding: 1rem;
+  background: var(--bg-card-hover);
+  border-radius: 8px;
+  font-family: 'Courier New', monospace;
+  font-size: 0.85rem;
+  color: var(--text-primary);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.status-modal-body .status-details pre {
+  margin: 0;
+  white-space: pre-wrap;
+  word-break: break-all;
+}
+
+.status-spinner {
+  display: inline-block;
+  width: 20px;
+  height: 20px;
+  border: 2px solid var(--border-color);
+  border-top-color: var(--primary);
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+  margin-right: 0.75rem;
+  vertical-align: middle;
+}
+
+@keyframes spin {
+  to { transform: rotate(360deg); }
+}
+
 /* Responsive */
 @media (max-width: 768px) {
   .sidebar {

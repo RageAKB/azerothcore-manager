@@ -498,23 +498,40 @@ async function createBackup() {
     return;
   }
   
+  openStatusModal('Backup in Progress', 'Creating backup...');
+  
   try {
     await apiPost('/api/backup', { databases });
-    showToast('Backup created successfully');
-    loadBackups();
+    updateStatusModal('Backup created successfully', 'success');
+    addStatusDetail('Backup completed successfully.');
+    setTimeout(() => {
+      closeStatusModal();
+      loadBackups();
+      showToast('Backup created successfully');
+    }, 1500);
   } catch (err) {
-    showToast(`Error creating backup: ${err.message}`, 'error');
+    updateStatusModal(`Error: ${err.message}`, 'error');
+    addStatusDetail(err.message);
   }
 }
 
 async function restoreBackup(filename) {
   if (!confirm(`Restore from ${filename}? This will overwrite current data.`)) return;
   
+  openStatusModal('Restore in Progress', `Restoring from ${filename}...`);
+  
   try {
     await apiPost(`/api/backup/restore/${encodeURIComponent(filename)}`, {});
-    showToast('Backup restored successfully');
+    updateStatusModal('Backup restored successfully', 'success');
+    addStatusDetail('Restore completed successfully.');
+    setTimeout(() => {
+      closeStatusModal();
+      loadBackups();
+      showToast('Backup restored successfully');
+    }, 1500);
   } catch (err) {
-    showToast(`Error restoring backup: ${err.message}`, 'error');
+    updateStatusModal(`Error: ${err.message}`, 'error');
+    addStatusDetail(err.message);
   }
 }
 

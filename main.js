@@ -317,8 +317,8 @@ app.post('/api/backup', async (req, res) => {
     const dbHost = process.env.DB_HOST || 'ac-database';
     const dbUser = process.env.DB_USER || 'root';
     const dbPass = process.env.DB_PASSWORD || 'password';
-    // Use pipefail so gzip doesn't mask mysqldump errors; remove file on failure
-    const cmd = `set -o pipefail && mysqldump --host=${dbHost} --user=${dbUser} --password=${dbPass} ${dbArg} 2>&1 | gzip > "${backupFile}"`;
+    // Use MYSQL_PWD env var instead of --password= to avoid leaking in ps/error output
+    const cmd = `set -o pipefail && MYSQL_PWD='${dbPass}' mysqldump --host=${dbHost} --user=${dbUser} ${dbArg} 2>&1 | gzip > "${backupFile}"`;
     try {
       await execAsync(cmd);
     } catch (err) {

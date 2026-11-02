@@ -11,9 +11,10 @@ async function fixAuth() {
     try {
       const conn = await mysql.createConnection({ host, port, user, password });
       await conn.query(
-        "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY ?; FLUSH PRIVILEGES;",
+        "ALTER USER 'root'@'%' IDENTIFIED WITH mysql_native_password BY ?",
         [password]
       );
+      await conn.query("FLUSH PRIVILEGES");
       await conn.end();
       console.log('Auth plugin switched to mysql_native_password.');
       return;

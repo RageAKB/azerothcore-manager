@@ -43,7 +43,31 @@ function showTab(tabName) {
 
 function showToast(message, type = 'success') {
   const toast = document.getElementById('toast');
-  toast.textContent = message;
+  toast.innerHTML = '';
+  
+  const msgSpan = document.createElement('span');
+  msgSpan.className = 'toast-message';
+  msgSpan.textContent = message;
+  toast.appendChild(msgSpan);
+  
+  if (type === 'error') {
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'toast-copy-btn';
+    copyBtn.innerHTML = '📋';
+    copyBtn.title = 'Copy error message';
+    copyBtn.addEventListener('click', (e) => {
+      e.stopPropagation();
+      navigator.clipboard.writeText(message).then(() => {
+        copyBtn.textContent = '✓';
+        setTimeout(() => { copyBtn.textContent = '📋'; }, 1500);
+      }).catch(() => {
+        copyBtn.textContent = '✗';
+        setTimeout(() => { copyBtn.textContent = '📋'; }, 1500);
+      });
+    });
+    toast.appendChild(copyBtn);
+  }
+  
   toast.className = `toast ${type} show`;
   
   const duration = type === 'error' ? 15000 : 5000;

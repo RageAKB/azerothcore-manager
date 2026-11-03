@@ -9,6 +9,7 @@ RUN apt-get update -qq && apt-get install -y -qq --no-install-recommends \
     default-mysql-client \
     curl \
     ca-certificates \
+    netcat-openbsd \
     && curl -fsSL https://download.docker.com/linux/static/stable/x86_64/docker-27.5.1.tgz | tar xz --strip-components=1 -C /usr/local/bin docker/docker \
     && rm -rf /var/lib/apt/lists/*
 COPY . .

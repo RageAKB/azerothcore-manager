@@ -121,22 +121,29 @@ app.get('/api/system/containers', async (req, res) => {
 app.get('/api/server/status', async (req, res) => {
     try {
       const targetContainers = [
-        { name: CONTAINER_NAMES.auth, env: 'AC_AUTH_STATUS' },
-        { name: CONTAINER_NAMES.world, env: 'AC_WORLD_STATUS' },
-        { name: CONTAINER_NAMES.database, env: 'AC_DATABASE_STATUS' }
+        { name: CONTAINER_NAMES.auth, port: 3724 },
+        { name: CONTAINER_NAMES.world, port: 8085 },
+        { name: CONTAINER_NAMES.database, port: 3306 }
       ];
       const statuses = {};
 
       for (const container of targetContainers) {
-        try {
-          const { stdout } = await execAsync(`ping -c 1 -W 2 ${container.name}`);
-          statuses[container.name] = 'running';
-        } catch (e) {
-          statuses[container.name] = process.env[container.env] || 'offline';
-        }
-      }
+          try {
+            if (container.name === CONTAINER_NAMES.database) {
+              // Test database connection with MySQL client
+              const { stdout } = await execAsync(`mysql -h ${container.name} -P ${container.port} -e "SELECT 1" --connect-timeout=2`);
+            } else {
+              // Test port connection with netcat
+              const { stdout } = await execAsync(`echo | nc -z -w 2 ${container.name} ${container.port}`);
+            }
 
-      res.json(statuses);
+                  statuses[container.name] = 'running';
+          } catch (e) {
+            statuses[container.name] = 'offline';
+          }
+        }
+
+        res.json(statuses);
     } catch (err) {
       res.status(500).json({ error: err.message });
     }

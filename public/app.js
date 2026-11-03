@@ -181,7 +181,7 @@ async function loadServers() {
         <div class="status-item">
           <div>
             <strong>${c.name}</strong>
-            <div style="font-size: 0.8rem; color: var(--text-muted)">${c.id.substring(0, 12)}</div>
+            <div style="font-size: 0.8rem; color: var(--text-muted)">${c.id ? c.id.substring(0, 12) : '—'}</div>
           </div>
           <span class="status-badge ${c.status.includes('Up') ? 'status-running' : 'status-stopped'}">${c.status}</span>
         </div>

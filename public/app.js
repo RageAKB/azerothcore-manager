@@ -186,48 +186,33 @@ async function loadServers() {
           <span class="status-badge ${c.status.includes('Up') ? 'status-running' : 'status-stopped'}">${c.status}</span>
         </div>
       `).join('');
-    
-    // Server Controls
-    const servers = [
-      { name: 'ac-authserver', label: 'Auth Server', port: '3724' },
-      { name: 'ac-worldserver', label: 'World Server', port: '8085' },
-      { name: 'ac-database', label: 'Database', port: '3306' }
-    ];
-    
-    document.getElementById('serverControls').innerHTML = servers.map(s => {
-      const status = serverStatus[s.name] || 'not_found';
-      const isRunning = status === 'running';
-      return `
-        <div class="status-item">
-          <div>
-            <strong>${s.label}</strong>
-            <div style="font-size: 0.8rem; color: var(--text-muted)">Port: ${s.port}</div>
+      
+      // Server Status (ping-based)
+      const servers = [
+        { name: 'ac-authserver', label: 'Auth Server', port: '3724' },
+        { name: 'ac-worldserver', label: 'World Server', port: '8085' },
+        { name: 'ac-database', label: 'Database', port: '3306' }
+      ];
+      
+      document.getElementById('serverControls').innerHTML = servers.map(s => {
+        const status = serverStatus[s.name] || 'offline';
+        const isRunning = status === 'running';
+        return `
+          <div class="status-item">
+            <div>
+              <strong>${s.label}</strong>
+              <div style="font-size: 0.8rem; color: var(--text-muted)">Port: ${s.port}</div>
+            </div>
+            <span class="status-badge ${isRunning ? 'status-running' : 'status-stopped'}">${isRunning ? 'Online' : 'Offline'}</span>
           </div>
-          <div style="display: flex; gap: 0.5rem;">
-            ${isRunning 
-              ? `<button class="btn btn-sm btn-danger" onclick="controlServer('${s.name}', 'stop')">Stop</button>`
-              : `<button class="btn btn-sm btn-primary" onclick="controlServer('${s.name}', 'start')">Start</button>`
-            }
-            <button class="btn btn-sm btn-secondary" onclick="controlServer('${s.name}', 'restart')">Restart</button>
-          </div>
-        </div>
-      `;
-    }).join('');
-    
-  } catch (err) {
-    showToast(`Error loading servers: ${err.message}`, 'error');
+        `;
+      }).join('');
+      
+    } catch (err) {
+      showToast(`Error loading servers: ${err.message}`, 'error');
+    }
   }
-}
 
-async function controlServer(name, action) {
-  try {
-    await apiPost(`/api/system/container/${action}/${name}`, {});
-    showToast(`${name} ${action}ed successfully`);
-    loadServers();
-  } catch (err) {
-    showToast(`Error: ${err.message}`, 'error');
-  }
-}
 
 // ============ DATABASE ============
 

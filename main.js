@@ -115,55 +115,32 @@ app.get('/api/system/containers', async (req, res) => {
   }
 });
 
-app.post('/api/system/container/:action/:name', async (req, res) => {
-  try {
-    const { action, name } = req.params;
-    await execAsync(`docker ${action} ${name}`);
-    res.json({ success: true, message: `Container ${name} ${action}ed` });
-  } catch (err) {
-    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
-      return res.status(500).json({ error: 'Docker is not available inside this container.' });
-    }
-    res.status(500).json({ error: err.message });
-  }
-});
 
 // ============ SERVER STATUS ============
 
 app.get('/api/server/status', async (req, res) => {
-  try {
-    const targetContainers = [CONTAINER_NAMES.auth, CONTAINER_NAMES.world, CONTAINER_NAMES.database];
-    const statuses = {};
+    try {
+      const targetContainers = [
+        { name: CONTAINER_NAMES.auth, env: 'AC_AUTH_STATUS' },
+        { name: CONTAINER_NAMES.world, env: 'AC_WORLD_STATUS' },
+        { name: CONTAINER_NAMES.database, env: 'AC_DATABASE_STATUS' }
+      ];
+      const statuses = {};
 
-    const { stdout } = await execAsync('docker network inspect ' + AC_NETWORK);
-    if (!stdout.trim()) {
-      targetContainers.forEach(c => { statuses[c] = 'not_found'; });
-      return res.json(statuses);
-    }
-
-    const network = JSON.parse(stdout);
-    const networkContainers = network[0]?.Containers || {};
-
-    for (const container of targetContainers) {
-      if (networkContainers[container]) {
-        statuses[container] = networkContainers[container].Status;
-      } else {
-        statuses[container] = 'not_found';
+      for (const container of targetContainers) {
+        try {
+          const { stdout } = await execAsync(`ping -c 1 -W 2 ${container.name}`);
+          statuses[container.name] = 'running';
+        } catch (e) {
+          statuses[container.name] = process.env[container.env] || 'offline';
+        }
       }
-    }
 
-    res.json(statuses);
-  } catch (err) {
-    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
-      return res.json({
-        [CONTAINER_NAMES.auth]: process.env.AC_AUTH_STATUS || 'configured',
-        [CONTAINER_NAMES.world]: process.env.AC_WORLD_STATUS || 'configured',
-        [CONTAINER_NAMES.database]: process.env.AC_DATABASE_STATUS || 'configured'
-      });
+      res.json(statuses);
+    } catch (err) {
+      res.status(500).json({ error: err.message });
     }
-    res.status(500).json({ error: err.message });
-  }
-});
+  });
 
 // ============ DATABASE MANAGEMENT ============
 

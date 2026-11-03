@@ -102,8 +102,14 @@ app.get('/api/system/containers', async (req, res) => {
     }
     res.json(containers);
   } catch (err) {
-    if (isDockerNotFound(err) || isNetworkNotFound(err)) {
-      return res.json([]);
+      if (isDockerNotFound(err) || isNetworkNotFound(err)) {
+        // Fall back to configured container names from environment
+        const fallbackContainers = [
+          { name: CONTAINER_NAMES.auth, status: process.env.AC_AUTH_STATUS || 'configured' },
+          { name: CONTAINER_NAMES.world, status: process.env.AC_WORLD_STATUS || 'configured' },
+          { name: CONTAINER_NAMES.database, status: process.env.AC_DATABASE_STATUS || 'configured' }
+        ];
+        return res.json(fallbackContainers);
     }
     res.status(500).json({ error: err.message });
   }
@@ -150,9 +156,9 @@ app.get('/api/server/status', async (req, res) => {
   } catch (err) {
     if (isDockerNotFound(err) || isNetworkNotFound(err)) {
       return res.json({
-        [CONTAINER_NAMES.auth]: 'not_found',
-        [CONTAINER_NAMES.world]: 'not_found',
-        [CONTAINER_NAMES.database]: 'not_found'
+        [CONTAINER_NAMES.auth]: process.env.AC_AUTH_STATUS || 'configured',
+        [CONTAINER_NAMES.world]: process.env.AC_WORLD_STATUS || 'configured',
+        [CONTAINER_NAMES.database]: process.env.AC_DATABASE_STATUS || 'configured'
       });
     }
     res.status(500).json({ error: err.message });
